@@ -41,16 +41,15 @@
       <div class="create-box">
         <h2>Adopt Your Cat</h2>
         <input type="text" id="cat-name" placeholder="Cat name" maxlength="16">
+
         <label>Cat Type</label>
-        <select id="cat-type">
-          <option value="Tabby">Tabby</option>
-          <option value="Siamese">Siamese</option>
-          <option value="Maine Coon">Maine Coon</option>
-          <option value="Persian">Persian</option>
-          <option value="Sphynx">Sphynx</option>
-          <option value="Scottish Fold">Scottish Fold</option>
-          <option value="Calico">Calico</option>
-        </select>
+        <div id="cat-type-grid"></div>
+
+        <div class="preview-wrap">
+          <label>Preview</label>
+          <canvas id="cat-preview" width="200" height="150"></canvas>
+        </div>
+
         <label>Fur Color</label>
         <input type="color" id="fur-color" value="#d4a373">
         <label>Eye Color</label>
@@ -68,8 +67,10 @@
         <div class="stat"><span class="label">Hunger:</span> <div class="bar"><div id="bar-hunger"></div></div></div>
         <div class="stat"><span class="label">Age:</span> <span id="stat-age">0</span> days</div>
         <div class="stat"><span class="label">Stage:</span> <span id="stat-stage">kitten</span></div>
+        <div class="stat"><span class="label">Game Day:</span> <span id="stat-gameday">1</span></div>
         <button id="btn-ubi" class="ubi-btn">Claim Daily Catstream</button>
         <button id="btn-shop">Shop</button>
+        <button id="btn-reset-game" class="danger-btn">Reset Game</button>
         <button id="btn-logout">Logout</button>
       </div>
 
@@ -95,6 +96,7 @@
               <button data-food="roadkill">Roadkill</button>
               <button id="btn-cancel-feed">Cancel</button>
             </div>
+            <button id="btn-clean" class="clean-btn">Clean Up Messes</button>
           </div>
           <div id="catdergarten-box">
             <button id="btn-catdergarten">Send to Catdergarten</button>

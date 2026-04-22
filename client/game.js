@@ -4,6 +4,9 @@ let token = localStorage.getItem('meowser_token');
 let currentCat = null;
 let inventory = { items: [], furniture: [], money: 0 };
 let socket = null;
+let messes = [];
+let foodInBowl = null;
+let pettingHand = null;
 
 // ===== DOM REFS =====
 const screens = {
@@ -29,6 +32,7 @@ const barHappiness = document.getElementById('bar-happiness');
 const barHunger = document.getElementById('bar-hunger');
 const statAge = document.getElementById('stat-age');
 const statStage = document.getElementById('stat-stage');
+const statGameDay = document.getElementById('stat-gameday');
 const catNameDisplay = document.getElementById('cat-name-display');
 const catTypeDisplay = document.getElementById('cat-type-display');
 const chatLog = document.getElementById('chat-log');
@@ -78,6 +82,8 @@ document.getElementById('btn-register').onclick = async () => {
     token = data.token;
     localStorage.setItem('meowser_token', token);
     showScreen('create');
+    buildBreedGrid();
+    updatePreview();
   } catch (e) {
     authMsg.textContent = e.message;
     authMsg.className = 'msg err';
@@ -135,15 +141,103 @@ document.getElementById('btn-logout').onclick = () => {
   showScreen('auth');
 };
 
-// ===== CAT CREATION =====
+// ===== CAT CREATION WITH PREVIEW =====
+const CAT_BREEDS = [
+  { value: 'Tabby', label: 'Tabby', desc: 'Classic stripes' },
+  { value: 'Siamese', label: 'Siamese', desc: 'Blue eyes, sleek' },
+  { value: 'Maine Coon', label: 'Maine Coon', desc: 'Big and fluffy' },
+  { value: 'Persian', label: 'Persian', desc: 'Flat face, fancy' },
+  { value: 'Sphynx', label: 'Sphynx', desc: 'Hairless rebel' },
+  { value: 'Scottish Fold', label: 'Scottish Fold', desc: 'Folded ears' },
+  { value: 'Calico', label: 'Calico', desc: 'Three colors' }
+];
+
+let selectedBreed = 'Tabby';
+
+function buildBreedGrid() {
+  const grid = document.getElementById('cat-type-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  for (const breed of CAT_BREEDS) {
+    const card = document.createElement('div');
+    card.className = 'breed-card' + (breed.value === selectedBreed ? ' selected' : '');
+    card.innerHTML = `<canvas width="80" height="60"></canvas><div class="breed-name">${breed.label}</div><div class="breed-desc">${breed.desc}</div>`;
+    const cvs = card.querySelector('canvas');
+    drawPreviewCat(cvs.getContext('2d'), 40, 35, breed.value, document.getElementById('fur-color').value, document.getElementById('eye-color').value, 0.5);
+    card.onclick = () => {
+      selectedBreed = breed.value;
+      buildBreedGrid();
+      updatePreview();
+    };
+    grid.appendChild(card);
+  }
+}
+
+function updatePreview() {
+  const cvs = document.getElementById('cat-preview');
+  if (!cvs) return;
+  const fur = document.getElementById('fur-color').value;
+  const eye = document.getElementById('eye-color').value;
+  const pctx = cvs.getContext('2d');
+  pctx.clearRect(0, 0, 200, 150);
+  drawPreviewCat(pctx, 100, 75, selectedBreed, fur, eye, 1.2);
+}
+
+function drawPreviewCat(pctx, x, y, type, fur, eye, scale) {
+  pctx.save();
+  pctx.translate(x, y);
+  pctx.scale(scale, scale);
+
+  // Body
+  pctx.fillStyle = fur;
+  pctx.beginPath();
+  pctx.ellipse(0, 5, 25, 18, 0, 0, Math.PI * 2);
+  pctx.fill();
+
+  // Head
+  pctx.beginPath();
+  pctx.arc(12, -12, 18, 0, Math.PI * 2);
+  pctx.fill();
+
+  // Ears
+  if (type === 'Scottish Fold') {
+    pctx.beginPath(); pctx.ellipse(-2, -24, 6, 4, 0.3, 0, Math.PI * 2); pctx.fill();
+    pctx.beginPath(); pctx.ellipse(22, -24, 6, 4, -0.3, 0, Math.PI * 2); pctx.fill();
+  } else if (type === 'Sphynx') {
+    pctx.beginPath(); pctx.moveTo(-4, -22); pctx.lineTo(-14, -38); pctx.lineTo(4, -26); pctx.fill();
+    pctx.beginPath(); pctx.moveTo(24, -22); pctx.lineTo(34, -38); pctx.lineTo(16, -26); pctx.fill();
+  } else {
+    pctx.beginPath(); pctx.moveTo(-2, -22); pctx.lineTo(-10, -38); pctx.lineTo(6, -26); pctx.fill();
+    pctx.beginPath(); pctx.moveTo(20, -22); pctx.lineTo(28, -38); pctx.lineTo(14, -26); pctx.fill();
+  }
+
+  // Eyes
+  pctx.fillStyle = 'white';
+  pctx.beginPath(); pctx.ellipse(4, -14, 6, 7, 0, 0, Math.PI * 2); pctx.fill();
+  pctx.beginPath(); pctx.ellipse(22, -14, 6, 7, 0, 0, Math.PI * 2); pctx.fill();
+
+  pctx.fillStyle = eye;
+  pctx.beginPath(); pctx.arc(5, -13, 3.5, 0, Math.PI * 2); pctx.fill();
+  pctx.beginPath(); pctx.arc(23, -13, 3.5, 0, Math.PI * 2); pctx.fill();
+
+  // Nose
+  pctx.fillStyle = '#ffab91';
+  pctx.beginPath(); pctx.arc(14, -6, 3, 0, Math.PI * 2); pctx.fill();
+
+  pctx.restore();
+}
+
+// Update preview when colors change
+document.getElementById('fur-color').oninput = updatePreview;
+document.getElementById('eye-color').oninput = updatePreview;
+
 document.getElementById('btn-adopt').onclick = async () => {
   const name = document.getElementById('cat-name').value.trim();
-  const type = document.getElementById('cat-type').value;
   const fur = document.getElementById('fur-color').value;
   const eye = document.getElementById('eye-color').value;
   if (!name) return alert('Name your cat!');
   try {
-    await api('POST', '/api/cat', { name, type, fur_color: fur, eye_color: eye });
+    await api('POST', '/api/cat', { name, type: selectedBreed, fur_color: fur, eye_color: eye });
     await initGame();
   } catch (e) {
     document.getElementById('create-msg').textContent = e.message;
@@ -156,10 +250,13 @@ async function initGame() {
     const data = await api('GET', '/api/cat');
     if (!data.cat) {
       showScreen('create');
+      buildBreedGrid();
+      updatePreview();
       return;
     }
     currentCat = data.cat;
     await loadInventory();
+    await loadMesses();
     showScreen('game');
     updateStats();
     initRoom();
@@ -176,11 +273,19 @@ async function loadInventory() {
   inventory = data;
 }
 
+async function loadMesses() {
+  try {
+    const data = await api('GET', '/api/messes');
+    messes = data.messes || [];
+  } catch (e) { messes = []; }
+}
+
 function updateStats() {
   if (!currentCat) return;
   statMoney.textContent = currentCat.total_earnings?.toFixed(1) || 0;
   statAge.textContent = currentCat.age || 0;
   statStage.textContent = currentCat.growth_stage || 'kitten';
+  statGameDay.textContent = currentCat.game_day || 1;
   catNameDisplay.textContent = currentCat.name;
   catTypeDisplay.textContent = currentCat.type;
 
@@ -221,11 +326,12 @@ let catEntity = {
   x: 400, y: 250,
   vx: 0, vy: 0,
   targetX: null, targetY: null,
-  state: 'idle', // idle, walk, eat, sleep, play
+  state: 'idle',
+  pendingState: null,
   timer: 0,
   frame: 0,
-  facing: 1, // 1 right, -1 left
-  bubble: null, // { text, timer }
+  facing: 1,
+  bubble: null,
   heartTimer: 0
 };
 
@@ -233,6 +339,12 @@ function initRoom() {
   catEntity.x = 400;
   catEntity.y = 250;
   catEntity.state = 'idle';
+  catEntity.pendingState = null;
+  catEntity.timer = 0;
+  catEntity.vx = 0;
+  catEntity.vy = 0;
+  catEntity.targetX = null;
+  catEntity.targetY = null;
 }
 
 function setCatTarget(x, y, state = 'walk') {
@@ -251,6 +363,12 @@ function updateCatAI() {
     if (cat.bubble.timer <= 0) cat.bubble = null;
   }
   if (cat.heartTimer > 0) cat.heartTimer--;
+  if (pettingHand && pettingHand.timer > 0) {
+    pettingHand.x = cat.x + 30;
+    pettingHand.y = cat.y - 35;
+    pettingHand.timer--;
+  }
+  if (foodInBowl && foodInBowl.timer > 0) foodInBowl.timer--;
 
   if (cat.state === 'walk' && cat.targetX !== null) {
     const dx = cat.targetX - cat.x;
@@ -261,8 +379,14 @@ function updateCatAI() {
       cat.targetY = null;
       cat.vx = 0;
       cat.vy = 0;
-      cat.state = 'idle';
-      cat.timer = 0;
+      if (cat.pendingState) {
+        cat.state = cat.pendingState;
+        cat.pendingState = null;
+        cat.timer = 0;
+      } else if (cat.state === 'walk') {
+        cat.state = 'idle';
+        cat.timer = 0;
+      }
     } else {
       cat.vx = (dx / dist) * 1.5;
       cat.vy = (dy / dist) * 1.5;
@@ -270,11 +394,80 @@ function updateCatAI() {
     }
   }
 
-  if (cat.state === 'idle' && cat.timer > 120 + Math.random() * 200) {
-    // Pick random target
-    const fx = Object.values(FURNITURE_LAYOUT);
-    const target = fx[Math.floor(Math.random() * fx.length)];
-    setCatTarget(target.x + target.w/2, target.y + target.h/2 + 20);
+  if (cat.state === 'idle') {
+    if (cat.timer > 120 + Math.random() * 200) {
+      const roll = Math.random();
+      if (roll < 0.05 && messes.length < 3) {
+        cat.timer = 0;
+        const sandbox = FURNITURE_LAYOUT.sandbox;
+        const sdx = sandbox.x + sandbox.w/2 - cat.x;
+        const sdy = sandbox.y + sandbox.h/2 - cat.y;
+        const sdist = Math.sqrt(sdx*sdx + sdy*sdy);
+        if (sdist > 40) {
+          cat.pendingState = 'piss';
+          setCatTarget(sandbox.x + sandbox.w/2, sandbox.y + sandbox.h/2 + 20, 'walk');
+        } else {
+          cat.state = 'piss';
+          cat.timer = 0;
+        }
+      } else if (roll < 0.15) {
+        cat.state = 'sit';
+        cat.timer = 0;
+      } else if (roll < 0.25) {
+        cat.state = 'play';
+        cat.timer = 0;
+      } else {
+        const fx = Object.values(FURNITURE_LAYOUT);
+        const target = fx[Math.floor(Math.random() * fx.length)];
+        setCatTarget(target.x + target.w/2, target.y + target.h/2 + 20);
+      }
+    }
+  }
+
+  if (cat.state === 'sit') {
+    if (cat.timer > 100 + Math.random() * 150) {
+      if (Math.random() < 0.4) {
+        cat.state = 'nap';
+        cat.timer = 0;
+        const beds = ['bed', 'couch', 'cat_bed', 'lounger'];
+        let nearest = null, nearestDist = 9999;
+        for (const key of beds) {
+          const b = FURNITURE_LAYOUT[key];
+          if (!b) continue;
+          const dx = b.x + b.w/2 - cat.x;
+          const dy = b.y + b.h/2 - cat.y;
+          const d = Math.sqrt(dx*dx + dy*dy);
+          if (d < nearestDist) { nearestDist = d; nearest = b; }
+        }
+        if (nearest && nearestDist > 40) {
+          setCatTarget(nearest.x + nearest.w/2, nearest.y + nearest.h/2 + 10, 'walk');
+        }
+      } else {
+        cat.state = 'idle';
+        cat.timer = 0;
+      }
+    }
+  }
+
+  if (cat.state === 'nap') {
+    if (cat.timer > 200 + Math.random() * 300) {
+      cat.state = 'idle';
+      cat.timer = 0;
+    }
+  }
+
+  if (cat.state === 'piss') {
+    if (cat.timer === 60) {
+      const mx = cat.x + (Math.random() - 0.5) * 20;
+      const my = cat.y + 20;
+      messes.push({ type: 'piss', x: mx, y: my, id: 'temp-' + Date.now() });
+      api('POST', '/api/cat/mess', { type: 'piss', x: mx, y: my }).catch(() => {});
+      cat.bubble = { text: '*pssss*', timer: 60 };
+    }
+    if (cat.timer > 120) {
+      cat.state = 'idle';
+      cat.timer = 0;
+    }
   }
 
   if (cat.state === 'play') {
@@ -286,20 +479,24 @@ function updateCatAI() {
     }
   }
 
+  if (cat.state === 'eat') {
+    if (cat.timer > 90) {
+      cat.state = 'idle';
+      cat.timer = 0;
+      foodInBowl = null;
+    }
+  }
+
   cat.x += cat.vx;
   cat.y += cat.vy;
-
-  // Bounds
   cat.x = Math.max(30, Math.min(ROOM_W - 30, cat.x));
   cat.y = Math.max(100, Math.min(ROOM_H - 40, cat.y));
 }
 
 function drawRoom() {
-  // Floor
   ctx.fillStyle = '#faf3e0';
   ctx.fillRect(0, 0, ROOM_W, ROOM_H);
 
-  // Floor boards
   ctx.strokeStyle = '#f0e6d0';
   ctx.lineWidth = 1;
   for (let y = 0; y < ROOM_H; y += 40) {
@@ -309,13 +506,11 @@ function drawRoom() {
     ctx.stroke();
   }
 
-  // Wall
   ctx.fillStyle = '#fff8e7';
   ctx.fillRect(0, 0, ROOM_W, 40);
   ctx.fillStyle = '#e0d5c0';
   ctx.fillRect(0, 38, ROOM_W, 4);
 
-  // Window
   ctx.fillStyle = '#cceeff';
   ctx.fillRect(300, 10, 160, 60);
   ctx.strokeStyle = '#8ab6d6';
@@ -370,6 +565,19 @@ function drawFurnitureItem(key, f) {
       ctx.beginPath();
       ctx.ellipse(l.x + l.w/2, l.y + l.h/2, l.w/2 - 4, l.h/2 - 4, 0, 0, Math.PI * 2);
       ctx.fill();
+          // Food on top if recently fed
+      if (foodInBowl && foodInBowl.timer > 0) {
+        const foodColors = { dry: '#d2691e', wet: '#8b4513', wagyu: '#ff4444', roadkill: '#556b2f' };
+        ctx.fillStyle = foodColors[foodInBowl.type] || '#d2691e';
+        ctx.beginPath();
+        ctx.ellipse(l.x + l.w/2, l.y + l.h/2 - 4, l.w/2 - 6, l.h/2 - 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Food chunks
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.beginPath(); ctx.arc(l.x + l.w/2 - 6, l.y + l.h/2 - 6, 3, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(l.x + l.w/2 + 5, l.y + l.h/2 - 2, 2, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(l.x + l.w/2 - 2, l.y + l.h/2 - 8, 2, 0, Math.PI*2); ctx.fill();
+      }
     }
   } else if (key === 'sandbox') {
     ctx.fillRect(l.x, l.y, l.w, l.h);
@@ -409,6 +617,26 @@ function drawFurnitureItem(key, f) {
   }
 }
 
+function drawMess(m) {
+  if (m.type === 'piss') {
+    ctx.fillStyle = 'rgba(230, 200, 50, 0.7)';
+    ctx.beginPath();
+    ctx.ellipse(m.x, m.y, 16, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(200, 170, 30, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = '#5d4037';
+    ctx.beginPath();
+    ctx.ellipse(m.x, m.y, 8, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(m.x + 5, m.y - 3, 6, 5, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
 function drawCat() {
   const c = catEntity;
   const cat = currentCat;
@@ -433,12 +661,98 @@ function drawCat() {
   ctx.ellipse(0, 35, 25, 8, 0, 0, Math.PI * 2);
   ctx.fill();
 
+  if (c.state === 'nap') {
+    drawNapCat(fur, eye, c.frame);
+  } else if (c.state === 'sit') {
+    drawSitCat(fur, eye, bounce, c.frame);
+  } else if (c.state === 'piss') {
+    drawPissCat(fur, eye, bounce, c.frame);
+  } else if (c.state === 'eat') {
+    drawEatCat(fur, eye, bounce, c.frame);
+  } else {
+    drawStandingCat(fur, eye, bounce, isWalking, c.frame);
+  }
+
+  ctx.restore();
+
+  // Hearts when petted
+  if (c.heartTimer > 0) {
+    ctx.fillStyle = '#e76f51';
+    const hx = x + (Math.random() - 0.5) * 30;
+    const hy = y - 40 - (60 - c.heartTimer);
+    ctx.font = '20px sans-serif';
+    ctx.fillText('❤', hx, hy);
+  }
+
+  // Zzz when napping
+  if (c.state === 'nap') {
+    ctx.fillStyle = '#666';
+    ctx.font = '16px sans-serif';
+    const zy = y - 40 - Math.sin(c.frame * 0.05) * 10;
+    ctx.fillText('Z', x + 20, zy);
+    if (c.frame % 120 > 60) ctx.fillText('z', x + 28, zy - 12);
+  }
+
+  // Hand petting animation
+  if (pettingHand && pettingHand.timer > 0) {
+    const bob = Math.sin(pettingHand.timer * 0.3) * 8;
+    const hx = pettingHand.x;
+    const hy = pettingHand.y + bob;
+    // Draw a cartoon hand (palm)
+    ctx.fillStyle = '#f5cba7';
+    ctx.beginPath();
+    ctx.ellipse(hx, hy, 22, 16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#8d5524';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Fingers
+    ctx.strokeStyle = '#8d5524';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(hx - 14, hy - 10); ctx.lineTo(hx - 16, hy - 28);
+    ctx.moveTo(hx - 5, hy - 14); ctx.lineTo(hx - 6, hy - 32);
+    ctx.moveTo(hx + 5, hy - 14); ctx.lineTo(hx + 6, hy - 32);
+    ctx.moveTo(hx + 14, hy - 10); ctx.lineTo(hx + 16, hy - 28);
+    ctx.stroke();
+    // Thumb
+    ctx.beginPath();
+    ctx.moveTo(hx + 18, hy + 2); ctx.lineTo(hx + 26, hy - 10);
+    ctx.stroke();
+  }
+
+  // Speech bubble
+  if (c.bubble) {
+    ctx.fillStyle = 'white';
+    ctx.strokeStyle = '#ccc';
+    ctx.lineWidth = 1;
+    const bw = c.bubble.text.length * 8 + 20;
+    const bx = x - bw/2;
+    const by = y - 80;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(bx, by, bw, 30, 8);
+    } else {
+      ctx.rect(bx, by, bw, 30);
+    }
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#333';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(c.bubble.text, x, by + 20);
+    ctx.textAlign = 'left';
+  }
+}
+
+function drawStandingCat(fur, eye, bounce, isWalking, frame) {
   // Tail
   ctx.strokeStyle = fur;
   ctx.lineWidth = 8;
   ctx.lineCap = 'round';
   ctx.beginPath();
-  const tailWag = Math.sin(c.frame * 0.15) * 10;
+  const tailWag = Math.sin(frame * 0.15) * 10;
   ctx.moveTo(-20, 10);
   ctx.quadraticCurveTo(-40, -10 + tailWag, -35, -30 + tailWag * 0.5);
   ctx.stroke();
@@ -450,7 +764,7 @@ function drawCat() {
   ctx.fill();
 
   // Legs
-  const legOffset = isWalking ? Math.sin(c.frame * 0.3) * 6 : 0;
+  const legOffset = isWalking ? Math.sin(frame * 0.3) * 6 : 0;
   ctx.fillStyle = fur;
   ctx.fillRect(-18, 20 + legOffset, 10, 16);
   ctx.fillRect(8, 20 - legOffset, 10, 16);
@@ -538,36 +852,177 @@ function drawCat() {
   ctx.moveTo(22, -2 + bounce);
   ctx.lineTo(38, 2 + bounce);
   ctx.stroke();
+}
 
-  ctx.restore();
+function drawSitCat(fur, eye, bounce, frame) {
+  // Tail curled around
+  ctx.strokeStyle = fur;
+  ctx.lineWidth = 8;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(-15, 15, 18, Math.PI, Math.PI * 1.7);
+  ctx.stroke();
 
-  // Hearts when petted
-  if (c.heartTimer > 0) {
-    ctx.fillStyle = '#e76f51';
-    const hx = x + (Math.random() - 0.5) * 30;
-    const hy = y - 40 - (60 - c.heartTimer);
-    ctx.font = '20px sans-serif';
-    ctx.fillText('❤', hx, hy);
-  }
+  // Body (more vertical)
+  ctx.fillStyle = fur;
+  ctx.beginPath();
+  ctx.ellipse(0, 5, 22, 26, 0, 0, Math.PI * 2);
+  ctx.fill();
 
-  // Speech bubble
-  if (c.bubble) {
-    ctx.fillStyle = 'white';
-    ctx.strokeStyle = '#ccc';
-    ctx.lineWidth = 1;
-    const bw = c.bubble.text.length * 8 + 20;
-    const bx = x - bw/2;
-    const by = y - 80;
-    ctx.beginPath();
-    ctx.roundRect(bx, by, bw, 30, 8);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#333';
-    ctx.font = '14px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(c.bubble.text, x, by + 20);
-    ctx.textAlign = 'left';
-  }
+  // Front legs
+  ctx.fillRect(-12, 18, 8, 14);
+  ctx.fillRect(4, 18, 8, 14);
+
+  // Head
+  ctx.beginPath();
+  ctx.arc(10, -22 + bounce, 20, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ears
+  ctx.beginPath();
+  ctx.moveTo(-2, -35 + bounce);
+  ctx.lineTo(-8, -52 + bounce);
+  ctx.lineTo(6, -38 + bounce);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(16, -35 + bounce);
+  ctx.lineTo(24, -50 + bounce);
+  ctx.lineTo(28, -33 + bounce);
+  ctx.fill();
+
+  // Eyes
+  ctx.fillStyle = 'white';
+  ctx.beginPath(); ctx.ellipse(4, -24 + bounce, 6, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(20, -24 + bounce, 6, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = eye;
+  ctx.beginPath(); ctx.arc(5, -23 + bounce, 3.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(21, -23 + bounce, 3.5, 0, Math.PI * 2); ctx.fill();
+
+  // Pupils
+  ctx.fillStyle = '#222';
+  ctx.beginPath(); ctx.arc(5, -23 + bounce, 1.8, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(21, -23 + bounce, 1.8, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawNapCat(fur, eye, frame) {
+  // Curled body
+  ctx.fillStyle = fur;
+  ctx.beginPath();
+  ctx.ellipse(0, 10, 26, 20, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Head tucked in
+  ctx.beginPath();
+  ctx.arc(14, 8, 16, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Tail wrapped around
+  ctx.strokeStyle = fur;
+  ctx.lineWidth = 8;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(-10, 12, 20, Math.PI * 0.8, Math.PI * 1.6);
+  ctx.stroke();
+
+  // Closed eyes (lines)
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(8, 6); ctx.lineTo(14, 6);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(18, 6); ctx.lineTo(24, 6);
+  ctx.stroke();
+}
+
+function drawPissCat(fur, eye, bounce, frame) {
+  // Squatting body (lower, wider)
+  ctx.fillStyle = fur;
+  ctx.beginPath();
+  ctx.ellipse(0, 18, 26, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Legs splayed
+  ctx.fillRect(-20, 22, 10, 10);
+  ctx.fillRect(10, 22, 10, 10);
+
+  // Tail straight out
+  ctx.strokeStyle = fur;
+  ctx.lineWidth = 8;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-20, 15);
+  ctx.lineTo(-45, 10 + Math.sin(frame * 0.3) * 3);
+  ctx.stroke();
+
+  // Head
+  ctx.beginPath();
+  ctx.arc(12, -5 + bounce, 20, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ears
+  ctx.beginPath();
+  ctx.moveTo(-2, -18 + bounce);
+  ctx.lineTo(-8, -36 + bounce);
+  ctx.lineTo(6, -22 + bounce);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(16, -18 + bounce);
+  ctx.lineTo(24, -36 + bounce);
+  ctx.lineTo(28, -18 + bounce);
+  ctx.fill();
+
+  // Eyes (looking down)
+  ctx.fillStyle = 'white';
+  ctx.beginPath(); ctx.ellipse(4, -8 + bounce, 6, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(22, -8 + bounce, 6, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = eye;
+  ctx.beginPath(); ctx.arc(5, -7 + bounce, 3.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(23, -7 + bounce, 3.5, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawEatCat(fur, eye, bounce, frame) {
+  // Body
+  ctx.fillStyle = fur;
+  ctx.beginPath();
+  ctx.ellipse(0, 10, 28, 22, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Head (lower, facing down)
+  ctx.beginPath();
+  ctx.arc(12, -5 + bounce, 20, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ears
+  ctx.beginPath();
+  ctx.moveTo(-2, -18 + bounce);
+  ctx.lineTo(-8, -36 + bounce);
+  ctx.lineTo(6, -22 + bounce);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(16, -18 + bounce);
+  ctx.lineTo(24, -36 + bounce);
+  ctx.lineTo(28, -18 + bounce);
+  ctx.fill();
+
+  // Eyes
+  ctx.fillStyle = 'white';
+  ctx.beginPath(); ctx.ellipse(4, -8 + bounce, 6, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(22, -8 + bounce, 6, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = eye;
+  ctx.beginPath(); ctx.arc(5, -7 + bounce, 3.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(23, -7 + bounce, 3.5, 0, Math.PI * 2); ctx.fill();
+
+  // Mouth chewing animation
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1.5;
+  const chew = Math.sin(frame * 0.2) * 2;
+  ctx.beginPath();
+  ctx.arc(10, 2 + bounce + chew, 3, 0, Math.PI);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(18, 2 + bounce + chew, 3, 0, Math.PI);
+  ctx.stroke();
 }
 
 function drawGame() {
@@ -579,6 +1034,9 @@ function drawGame() {
   for (const f of allFurniture) {
     drawFurnitureItem(f.item_type, f);
   }
+
+  // Draw messes
+  for (const m of messes) drawMess(m);
 
   updateCatAI();
   drawCat();
@@ -607,8 +1065,9 @@ chatOptions.querySelectorAll('button[data-action]').forEach(btn => {
       logChat(data.message, false);
 
       if (action === 'pet') {
-        catEntity.heartTimer = 60;
-        catEntity.bubble = { text: 'Meow!', timer: 90 };
+        catEntity.heartTimer = 180;
+        catEntity.bubble = { text: 'Meow!', timer: 180 };
+        pettingHand = { x: catEntity.x + 30, y: catEntity.y - 45, timer: 180 };
       } else if (action === 'talk') {
         catEntity.bubble = { text: data.message, timer: 120 };
       } else if (action === 'play') {
@@ -625,14 +1084,17 @@ chatOptions.querySelectorAll('button[data-action]').forEach(btn => {
 feedOptions.querySelectorAll('button[data-food]').forEach(btn => {
   btn.onclick = async () => {
     try {
-      const data = await api('POST', '/api/cat/feed', { foodType: btn.dataset.food });
+      const foodType = btn.dataset.food;
+      const data = await api('POST', '/api/cat/feed', { foodType });
       currentCat = data.cat;
       updateStats();
       logChat(data.message, false);
       catEntity.bubble = { text: 'Meow!', timer: 90 };
+      foodInBowl = { type: foodType, timer: 600 };
       // Walk to food bowl
       const bowl = FURNITURE_LAYOUT.food_bowl;
-      setCatTarget(bowl.x, bowl.y, 'walk');
+      catEntity.pendingState = 'eat';
+      setCatTarget(bowl.x, bowl.y + 10, 'walk');
     } catch (e) {
       logChat(e.message, true);
     }
@@ -644,6 +1106,38 @@ feedOptions.querySelectorAll('button[data-food]').forEach(btn => {
 document.getElementById('btn-cancel-feed').onclick = () => {
   feedOptions.classList.add('hidden');
   chatOptions.classList.remove('hidden');
+};
+
+// Clean
+document.getElementById('btn-clean').onclick = async () => {
+  try {
+    const data = await api('POST', '/api/cat/clean');
+    currentCat = data.cat;
+    messes = [];
+    updateStats();
+    logChat(data.message, true);
+  } catch (e) {
+    logChat(e.message, true);
+  }
+};
+
+// Reset game
+document.getElementById('btn-reset-game').onclick = async () => {
+  if (!confirm('Are you sure? This will delete your cat and all progress!')) return;
+  try {
+    await api('POST', '/api/cat/reset');
+    currentCat = null;
+    inventory = { items: [], furniture: [], money: 0 };
+    messes = [];
+    foodInBowl = null;
+    pettingHand = null;
+    catEntity.pendingState = null;
+    showScreen('create');
+    buildBreedGrid();
+    updatePreview();
+  } catch (e) {
+    logChat(e.message, true);
+  }
 };
 
 // UBI
@@ -671,6 +1165,7 @@ async function checkUbiStatus() {
       btn.disabled = false;
       btn.textContent = 'Claim Daily Catstream';
     }
+    if (data.gameDay) statGameDay.textContent = data.gameDay;
   } catch (e) { /* ignore */ }
 }
 
@@ -801,7 +1296,6 @@ function drawCatdergarten() {
   cdCtx.fillStyle = '#e0f7fa';
   cdCtx.fillRect(0, 0, 800, 500);
 
-  // Grass patches
   cdCtx.fillStyle = '#b2ebf2';
   for (let i = 0; i < 5; i++) {
     cdCtx.beginPath();
@@ -809,7 +1303,6 @@ function drawCatdergarten() {
     cdCtx.fill();
   }
 
-  // Fence
   cdCtx.fillStyle = '#8d6e63';
   for (let x = 0; x < 800; x += 40) {
     cdCtx.fillRect(x, 20, 30, 60);
@@ -821,7 +1314,6 @@ function drawCatdergarten() {
   }
   cdCtx.fillRect(0, 60, 800, 8);
 
-  // Cats
   for (const [id, c] of catdergartenCats) {
     drawSimpleCat(cdCtx, c.x, c.y, c.furColor || '#d4a373', c.name, c.frame);
   }
@@ -829,63 +1321,57 @@ function drawCatdergarten() {
   requestAnimationFrame(drawCatdergarten);
 }
 
-function drawSimpleCat(ctx, x, y, color, name, frame) {
+function drawSimpleCat(sctx, x, y, color, name, frame) {
   const bounce = Math.sin((frame || 0) * 0.1) * 2;
-  ctx.save();
-  ctx.translate(x, y);
+  sctx.save();
+  sctx.translate(x, y);
 
-  // Shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.1)';
-  ctx.beginPath();
-  ctx.ellipse(0, 20, 18, 5, 0, 0, Math.PI * 2);
-  ctx.fill();
+  sctx.fillStyle = 'rgba(0,0,0,0.1)';
+  sctx.beginPath();
+  sctx.ellipse(0, 20, 18, 5, 0, 0, Math.PI * 2);
+  sctx.fill();
 
-  // Body
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.ellipse(0, 5, 18, 14, 0, 0, Math.PI * 2);
-  ctx.fill();
+  sctx.fillStyle = color;
+  sctx.beginPath();
+  sctx.ellipse(0, 5, 18, 14, 0, 0, Math.PI * 2);
+  sctx.fill();
 
-  // Head
-  ctx.beginPath();
-  ctx.arc(0, -14 + bounce, 14, 0, Math.PI * 2);
-  ctx.fill();
+  sctx.beginPath();
+  sctx.arc(0, -14 + bounce, 14, 0, Math.PI * 2);
+  sctx.fill();
 
-  // Ears
-  ctx.beginPath();
-  ctx.moveTo(-10, -22 + bounce);
-  ctx.lineTo(-14, -36 + bounce);
-  ctx.lineTo(-2, -26 + bounce);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(10, -22 + bounce);
-  ctx.lineTo(14, -36 + bounce);
-  ctx.lineTo(2, -26 + bounce);
-  ctx.fill();
+  sctx.beginPath();
+  sctx.moveTo(-10, -22 + bounce);
+  sctx.lineTo(-14, -36 + bounce);
+  sctx.lineTo(-2, -26 + bounce);
+  sctx.fill();
+  sctx.beginPath();
+  sctx.moveTo(10, -22 + bounce);
+  sctx.lineTo(14, -36 + bounce);
+  sctx.lineTo(2, -26 + bounce);
+  sctx.fill();
 
-  // Eyes
-  ctx.fillStyle = 'white';
-  ctx.beginPath();
-  ctx.arc(-5, -16 + bounce, 4, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(5, -16 + bounce, 4, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#333';
-  ctx.beginPath();
-  ctx.arc(-5, -16 + bounce, 2, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(5, -16 + bounce, 2, 0, Math.PI * 2);
-  ctx.fill();
+  sctx.fillStyle = 'white';
+  sctx.beginPath();
+  sctx.arc(-5, -16 + bounce, 4, 0, Math.PI * 2);
+  sctx.fill();
+  sctx.beginPath();
+  sctx.arc(5, -16 + bounce, 4, 0, Math.PI * 2);
+  sctx.fill();
+  sctx.fillStyle = '#333';
+  sctx.beginPath();
+  sctx.arc(-5, -16 + bounce, 2, 0, Math.PI * 2);
+  sctx.fill();
+  sctx.beginPath();
+  sctx.arc(5, -16 + bounce, 2, 0, Math.PI * 2);
+  sctx.fill();
 
-  // Name tag
-  ctx.fillStyle = '#333';
-  ctx.font = '11px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(name, 0, 35);
+  sctx.fillStyle = '#333';
+  sctx.font = '11px sans-serif';
+  sctx.textAlign = 'center';
+  sctx.fillText(name, 0, 35);
 
-  ctx.restore();
+  sctx.restore();
 }
 
 drawCatdergarten();
@@ -915,5 +1401,12 @@ setInterval(async () => {
         updateStats();
       }
     } catch (e) { /* ignore */ }
+  }
+}, 30000);
+
+// Refresh messes periodically
+setInterval(async () => {
+  if (token && currentCat && !screens.game.classList.contains('hidden')) {
+    await loadMesses();
   }
 }, 30000);

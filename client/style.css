@@ -78,6 +78,22 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.danger-btn {
+  background: #c0392b;
+}
+.danger-btn:hover {
+  background: #a93226;
+}
+
+.clean-btn {
+  background: #2a9d8f;
+  width: 100%;
+  margin-top: 8px;
+}
+.clean-btn:hover {
+  background: #21867a;
+}
+
 .link {
   color: #e76f51;
   cursor: pointer;
@@ -101,7 +117,7 @@ button:disabled {
   border-radius: 20px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.1);
   width: 90%;
-  max-width: 400px;
+  max-width: 480px;
 }
 
 .create-box h2 {
@@ -121,6 +137,65 @@ button:disabled {
 input[type="color"] {
   height: 50px;
   cursor: pointer;
+}
+
+#cat-type-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.breed-card {
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 8px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.1s;
+  background: #fafafa;
+}
+
+.breed-card:hover {
+  border-color: #e76f51;
+  transform: translateY(-2px);
+}
+
+.breed-card.selected {
+  border-color: #e76f51;
+  background: #fff3f0;
+}
+
+.breed-card canvas {
+  display: block;
+  margin: 0 auto 4px;
+}
+
+.breed-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.breed-desc {
+  font-size: 0.7rem;
+  color: #888;
+}
+
+.preview-wrap {
+  text-align: center;
+  margin: 12px 0;
+}
+
+.preview-wrap label {
+  margin-top: 0;
+}
+
+#cat-preview {
+  display: block;
+  margin: 8px auto 0;
+  background: #faf3e0;
+  border-radius: 12px;
+  border: 2px solid #e0e0e0;
 }
 
 /* GAME */

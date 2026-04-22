@@ -80,7 +80,29 @@ db.exec(`
     bonus_percent REAL DEFAULT 0,
     UNIQUE(user_id, claim_date)
   );
+
+  CREATE TABLE IF NOT EXISTS messes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    x REAL NOT NULL,
+    y REAL NOT NULL,
+    created_at INTEGER DEFAULT (unixepoch())
+  );
 `);
+
+// Migration: add game time columns if not exist
+function addColumnIfNotExists(table, col, def) {
+  try {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+  } catch (e) {
+    // likely already exists
+  }
+}
+addColumnIfNotExists('cats', 'game_minutes', 'INTEGER DEFAULT 0');
+addColumnIfNotExists('cats', 'game_day', 'INTEGER DEFAULT 1');
+addColumnIfNotExists('cats', 'last_game_tick', 'INTEGER DEFAULT 0');
+addColumnIfNotExists('cats', 'last_ubi_game_day', 'INTEGER DEFAULT 0');
 
 // Seed default furniture for new cats
 const STARTER_FURNITURE = ['bed', 'couch', 'cat_bed', 'water_bowl', 'food_bowl', 'sandbox'];
@@ -116,6 +138,21 @@ function authMiddleware(req, res, next) {
 function getNow() { return Math.floor(Date.now() / 1000); }
 function getToday() { return new Date().toISOString().split('T')[0]; }
 
+function updateGameTime(cat) {
+  const now = getNow();
+  if (!cat.last_game_tick) {
+    return { ...cat, game_minutes: cat.game_minutes || 0, game_day: cat.game_day || 1 };
+  }
+  const elapsed = now - cat.last_game_tick;
+  // Cap at 2 minutes per update to prevent huge jumps
+  const capped = Math.min(elapsed, 120);
+  const newMinutes = (cat.game_minutes || 0) + Math.floor(capped / 60);
+  const newDay = Math.floor(newMinutes / 30) + 1;
+  db.prepare('UPDATE cats SET game_minutes = ?, game_day = ?, last_game_tick = ? WHERE id = ?')
+    .run(newMinutes, newDay, now, cat.id);
+  return { ...cat, game_minutes: newMinutes, game_day: newDay, last_game_tick: now };
+}
+
 function calculateCatStats(cat) {
   const now = getNow();
   const hoursSinceFed = (now - cat.last_fed) / 3600;
@@ -133,6 +170,10 @@ function calculateCatStats(cat) {
   if (hoursSincePetted > 8) happiness -= 5;
   if (hoursSincePlayed > 12) happiness -= 5;
 
+  // Messes affect happiness
+  const messCount = db.prepare('SELECT COUNT(*) as c FROM messes WHERE user_id = ?').get(cat.user_id)?.c || 0;
+  if (messCount > 0) happiness -= messCount * 3;
+
   // Cap values
   hunger = Math.max(0, Math.min(100, hunger));
   happiness = Math.max(0, Math.min(100, happiness));
@@ -145,7 +186,7 @@ function calculateCatStats(cat) {
   if (ageDays > 60) stage = 'adult';
   if (ageDays > 200) stage = 'elder';
 
-  return { hunger, happiness, growth_stage: stage, age: Math.floor(ageDays) };
+  return { hunger, happiness, growth_stage: stage, age: Math.floor(ageDays), game_day: cat.game_day || 1, mess_count: messCount };
 }
 
 function getWellCaredBonus(happiness) {
@@ -161,7 +202,6 @@ app.post('/api/auth/register', async (req, res) => {
   const hash = await bcrypt.hash(password, 10);
   try {
     const result = db.prepare('INSERT INTO users (email, password_hash) VALUES (?, ?)').run(email, hash);
-    // Give starter items
     for (const item of STARTER_FURNITURE) {
       db.prepare('INSERT INTO furniture (user_id, item_type) VALUES (?, ?)').run(result.lastInsertRowid, item);
     }
@@ -186,13 +226,13 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/auth/forgot-password', async (req, res) => {
   const { email } = req.body;
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  if (!user) return res.json({ message: 'If email exists, reset sent' }); // don't leak
+  if (!user) return res.json({ message: 'If email exists, reset sent' });
 
   const token = uuidv4();
   const expires = getNow() + 3600;
   db.prepare('UPDATE users SET reset_token = ?, reset_expires = ? WHERE id = ?').run(token, expires, user.id);
 
-  const resetUrl = `http://localhost:${PORT}/reset-password.html?token=${token}`;
+  const resetUrl = `http://localhost:${PORT}/?token=${token}`;
   if (transporter) {
     const info = await transporter.sendMail({
       from: 'meowser@game.local',
@@ -219,8 +259,27 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
 // ===== CAT ROUTES =====
 app.get('/api/cat', authMiddleware, (req, res) => {
-  const cat = db.prepare('SELECT * FROM cats WHERE user_id = ?').get(req.user.userId);
+  let cat = db.prepare('SELECT * FROM cats WHERE user_id = ?').get(req.user.userId);
   if (!cat) return res.json({ cat: null });
+
+  // Update game time
+  cat = updateGameTime(cat);
+
+  // Random chance to create mess if enough time passed
+  const now = getNow();
+  const elapsed = now - (cat.last_game_tick || now);
+  const messCount = db.prepare('SELECT COUNT(*) as c FROM messes WHERE user_id = ?').get(req.user.userId)?.c || 0;
+  if (messCount < 5 && elapsed > 300) {
+    // 15% chance per 5+ minute period
+    if (Math.random() < 0.15) {
+      const type = Math.random() < 0.7 ? 'piss' : 'poop';
+      const mx = 80 + Math.random() * 640;
+      const my = 120 + Math.random() * 320;
+      db.prepare('INSERT INTO messes (user_id, type, x, y) VALUES (?, ?, ?, ?)')
+        .run(req.user.userId, type, mx, my);
+    }
+  }
+
   const stats = calculateCatStats(cat);
   res.json({ cat: { ...cat, ...stats } });
 });
@@ -232,8 +291,8 @@ app.post('/api/cat', authMiddleware, (req, res) => {
 
   const now = getNow();
   const result = db.prepare(
-    'INSERT INTO cats (user_id, name, type, fur_color, eye_color, last_fed, last_petted, last_played, last_ubi_claim) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(req.user.userId, name, type, fur_color, eye_color, now, now, now, now);
+    'INSERT INTO cats (user_id, name, type, fur_color, eye_color, last_fed, last_petted, last_played, last_ubi_claim, last_game_tick, game_minutes, game_day, last_ubi_game_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(req.user.userId, name, type, fur_color, eye_color, now, now, now, now, now, 0, 1, 0);
 
   const cat = db.prepare('SELECT * FROM cats WHERE id = ?').get(result.lastInsertRowid);
   res.json({ cat: { ...cat, ...calculateCatStats(cat) } });
@@ -256,7 +315,6 @@ app.post('/api/cat/feed', authMiddleware, (req, res) => {
 
   const inv = db.prepare('SELECT * FROM inventory WHERE user_id = ? AND item_type = ?').get(req.user.userId, foodType + '_food');
   if (!inv || inv.quantity < 1) {
-    // Try to buy it automatically if they have no inventory but have earnings? No, require inventory.
     return res.status(400).json({ error: `No ${foodType} food in inventory. Visit the shop!` });
   }
 
@@ -304,6 +362,60 @@ app.post('/api/cat/talk', authMiddleware, (req, res) => {
   const meows = ['Meow!', 'Mrrrow?', 'Purr...', 'Meow meow!', 'Mew!'];
   const updated = db.prepare('SELECT * FROM cats WHERE id = ?').get(cat.id);
   res.json({ cat: { ...updated, ...calculateCatStats(updated) }, message: meows[Math.floor(Math.random() * meows.length)] });
+});
+
+app.post('/api/cat/clean', authMiddleware, (req, res) => {
+  const cat = db.prepare('SELECT * FROM cats WHERE user_id = ?').get(req.user.userId);
+  if (!cat) return res.status(404).json({ error: 'No cat' });
+
+  const messes = db.prepare('SELECT * FROM messes WHERE user_id = ?').all(req.user.userId);
+  if (messes.length === 0) return res.status(400).json({ error: 'Nothing to clean!' });
+
+  const earnings = messes.length * 1;
+  db.prepare('DELETE FROM messes WHERE user_id = ?').run(req.user.userId);
+  db.prepare('UPDATE cats SET total_earnings = total_earnings + ? WHERE id = ?').run(earnings, cat.id);
+
+  const updated = db.prepare('SELECT * FROM cats WHERE id = ?').get(cat.id);
+  res.json({ cat: { ...updated, ...calculateCatStats(updated) }, earnings, message: `Cleaned up ${messes.length} messes! +$${earnings}` });
+});
+
+app.post('/api/cat/reset', authMiddleware, (req, res) => {
+  const cat = db.prepare('SELECT * FROM cats WHERE user_id = ?').get(req.user.userId);
+  if (cat) {
+    db.prepare('DELETE FROM cats WHERE user_id = ?').run(req.user.userId);
+    db.prepare('DELETE FROM inventory WHERE user_id = ?').run(req.user.userId);
+    db.prepare('DELETE FROM furniture WHERE user_id = ?').run(req.user.userId);
+    db.prepare('DELETE FROM messes WHERE user_id = ?').run(req.user.userId);
+    db.prepare('DELETE FROM ubi_claims WHERE user_id = ?').run(req.user.userId);
+  }
+  // Re-seed starter furniture and items
+  const existingFurn = db.prepare('SELECT COUNT(*) as c FROM furniture WHERE user_id = ?').get(req.user.userId).c;
+  if (existingFurn === 0) {
+    for (const item of STARTER_FURNITURE) {
+      db.prepare('INSERT INTO furniture (user_id, item_type) VALUES (?, ?)').run(req.user.userId, item);
+    }
+    db.prepare('INSERT INTO inventory (user_id, item_type, quantity) VALUES (?, ?, ?)').run(req.user.userId, 'dry_food', 3);
+  }
+  res.json({ message: 'Game reset. Adopt a new cat!' });
+});
+
+// ===== MESSES =====
+app.get('/api/messes', authMiddleware, (req, res) => {
+  const messes = db.prepare('SELECT * FROM messes WHERE user_id = ?').all(req.user.userId);
+  res.json({ messes });
+});
+
+app.post('/api/cat/mess', authMiddleware, (req, res) => {
+  const { type, x, y } = req.body;
+  const cat = db.prepare('SELECT * FROM cats WHERE user_id = ?').get(req.user.userId);
+  if (!cat) return res.status(404).json({ error: 'No cat' });
+
+  const messCount = db.prepare('SELECT COUNT(*) as c FROM messes WHERE user_id = ?').get(req.user.userId)?.c || 0;
+  if (messCount >= 5) return res.status(400).json({ error: 'Too messy!' });
+
+  db.prepare('INSERT INTO messes (user_id, type, x, y) VALUES (?, ?, ?, ?)')
+    .run(req.user.userId, type || 'piss', x || 400, y || 300);
+  res.json({ message: 'Mess created' });
 });
 
 // ===== CATDERGARTEN =====
@@ -371,35 +483,44 @@ app.post('/api/shop/buy', authMiddleware, (req, res) => {
   res.json({ message: `Bought ${item.name}!`, money: cat.total_earnings - item.cost });
 });
 
-// ===== UBI / CATSTREAM =====
+// ===== UBI / CATSTREAM (per game day) =====
 app.get('/api/ubi/claim', authMiddleware, (req, res) => {
-  const today = getToday();
-  const existing = db.prepare('SELECT * FROM ubi_claims WHERE user_id = ? AND claim_date = ?').get(req.user.userId, today);
-  if (existing) return res.status(400).json({ error: 'Already claimed today' });
-
   const cat = db.prepare('SELECT * FROM cats WHERE user_id = ?').get(req.user.userId);
   if (!cat) return res.status(404).json({ error: 'No cat' });
 
-  const stats = calculateCatStats(cat);
+  const updatedCat = updateGameTime(cat);
+  const currentGameDay = updatedCat.game_day || 1;
+  const lastClaimDay = updatedCat.last_ubi_game_day || 0;
+
+  if (currentGameDay <= lastClaimDay) {
+    return res.status(400).json({ error: 'Already claimed this game day' });
+  }
+
+  const stats = calculateCatStats(updatedCat);
   const bonus = getWellCaredBonus(stats.happiness);
   const baseAmount = 20;
   const totalAmount = Math.floor(baseAmount * (1 + bonus) * 100) / 100;
 
-  db.prepare('INSERT INTO ubi_claims (user_id, claim_date, amount, bonus_percent) VALUES (?, ?, ?, ?)').run(req.user.userId, today, totalAmount, bonus * 100);
-  db.prepare('UPDATE cats SET total_earnings = total_earnings + ?, last_ubi_claim = ? WHERE id = ?').run(totalAmount, getNow(), cat.id);
+  db.prepare('UPDATE cats SET total_earnings = total_earnings + ?, last_ubi_game_day = ? WHERE id = ?')
+    .run(totalAmount, currentGameDay, updatedCat.id);
 
-  const updated = db.prepare('SELECT * FROM cats WHERE id = ?').get(cat.id);
-  res.json({ amount: totalAmount, bonus: bonus * 100, cat: { ...updated, ...calculateCatStats(updated) } });
+  const refreshed = db.prepare('SELECT * FROM cats WHERE id = ?').get(updatedCat.id);
+  res.json({ amount: totalAmount, bonus: bonus * 100, cat: { ...refreshed, ...calculateCatStats(refreshed) } });
 });
 
 app.get('/api/ubi/status', authMiddleware, (req, res) => {
-  const today = getToday();
-  const claim = db.prepare('SELECT * FROM ubi_claims WHERE user_id = ? AND claim_date = ?').get(req.user.userId, today);
-  res.json({ claimedToday: !!claim, amount: claim?.amount || null });
+  const cat = db.prepare('SELECT * FROM cats WHERE user_id = ?').get(req.user.userId);
+  if (!cat) return res.json({ claimedToday: false, amount: null });
+
+  const updatedCat = updateGameTime(cat);
+  const currentGameDay = updatedCat.game_day || 1;
+  const lastClaimDay = updatedCat.last_ubi_game_day || 0;
+
+  res.json({ claimedToday: currentGameDay <= lastClaimDay, amount: null, gameDay: currentGameDay });
 });
 
 // ===== SOCKET.IO CATDERGARTEN =====
-const catdergartenCats = new Map(); // socketId -> { x, y, name, type, color, animation }
+const catdergartenCats = new Map();
 
 io.on('connection', (socket) => {
   console.log('Socket connected:', socket.id);
