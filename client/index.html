@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meowser - Raise Your Cat</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- AUTH SCREEN -->
+    <div id="auth-screen" class="screen">
+      <div class="auth-box">
+        <h1>Meowser</h1>
+        <p class="subtitle">Raise cats. Stream cats. Love cats.</p>
+        <div id="auth-form">
+          <input type="email" id="auth-email" placeholder="Email" autocomplete="email">
+          <input type="password" id="auth-password" placeholder="Password (min 6 chars)" autocomplete="current-password">
+          <button id="btn-login">Login</button>
+          <button id="btn-register">Register</button>
+          <p class="link" id="link-forgot">Forgot password?</p>
+        </div>
+        <div id="forgot-form" class="hidden">
+          <input type="email" id="forgot-email" placeholder="Your email">
+          <button id="btn-send-reset">Send Reset Link</button>
+          <p class="link" id="link-back">Back to login</p>
+          <p id="reset-msg" class="msg"></p>
+        </div>
+        <div id="reset-form" class="hidden">
+          <input type="password" id="reset-password" placeholder="New password">
+          <button id="btn-reset">Reset Password</button>
+          <p id="reset-done" class="msg"></p>
+        </div>
+        <p id="auth-msg" class="msg"></p>
+      </div>
+    </div>
+
+    <!-- CAT CREATION -->
+    <div id="create-screen" class="screen hidden">
+      <div class="create-box">
+        <h2>Adopt Your Cat</h2>
+        <input type="text" id="cat-name" placeholder="Cat name" maxlength="16">
+        <label>Cat Type</label>
+        <select id="cat-type">
+          <option value="Tabby">Tabby</option>
+          <option value="Siamese">Siamese</option>
+          <option value="Maine Coon">Maine Coon</option>
+          <option value="Persian">Persian</option>
+          <option value="Sphynx">Sphynx</option>
+          <option value="Scottish Fold">Scottish Fold</option>
+          <option value="Calico">Calico</option>
+        </select>
+        <label>Fur Color</label>
+        <input type="color" id="fur-color" value="#d4a373">
+        <label>Eye Color</label>
+        <input type="color" id="eye-color" value="#4caf50">
+        <button id="btn-adopt">Adopt!</button>
+        <p id="create-msg" class="msg"></p>
+      </div>
+    </div>
+
+    <!-- MAIN GAME -->
+    <div id="game-screen" class="screen hidden">
+      <div id="top-bar">
+        <div class="stat"><span class="label">Meowcoins:</span> <span id="stat-money">0</span></div>
+        <div class="stat"><span class="label">Happiness:</span> <div class="bar"><div id="bar-happiness"></div></div></div>
+        <div class="stat"><span class="label">Hunger:</span> <div class="bar"><div id="bar-hunger"></div></div></div>
+        <div class="stat"><span class="label">Age:</span> <span id="stat-age">0</span> days</div>
+        <div class="stat"><span class="label">Stage:</span> <span id="stat-stage">kitten</span></div>
+        <button id="btn-ubi" class="ubi-btn">Claim Daily Catstream</button>
+        <button id="btn-shop">Shop</button>
+        <button id="btn-logout">Logout</button>
+      </div>
+
+      <div id="game-area">
+        <canvas id="room" width="800" height="500"></canvas>
+        <div id="side-panel">
+          <div id="cat-info">
+            <h3 id="cat-name-display">Cat</h3>
+            <p id="cat-type-display">Tabby</p>
+          </div>
+          <div id="chat-box">
+            <div id="chat-log"></div>
+            <div id="chat-options">
+              <button data-action="pet">Pet Cat</button>
+              <button data-action="talk">Talk to Cat</button>
+              <button data-action="play">Play with Cat</button>
+              <button data-action="feed">Feed Cat...</button>
+            </div>
+            <div id="feed-options" class="hidden">
+              <button data-food="dry">Dry Food</button>
+              <button data-food="wet">Wet Food</button>
+              <button data-food="wagyu">A5 Wagyu</button>
+              <button data-food="roadkill">Roadkill</button>
+              <button id="btn-cancel-feed">Cancel</button>
+            </div>
+          </div>
+          <div id="catdergarten-box">
+            <button id="btn-catdergarten">Send to Catdergarten</button>
+            <p class="hint">Earn Meowcoins while your cat socializes!</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CATDERGARTEN -->
+    <div id="catdergarten-screen" class="screen hidden">
+      <h2>Catdergarten</h2>
+      <canvas id="catdergarten-canvas" width="800" height="500"></canvas>
+      <div id="catdergarten-chat">
+        <div id="cd-log"></div>
+        <input type="text" id="cd-input" placeholder="Say something... (cat replies are always meow)" maxlength="60">
+        <button id="btn-cd-send">Send</button>
+      </div>
+      <button id="btn-leave-cd">Take Cat Home</button>
+    </div>
+
+    <!-- SHOP MODAL -->
+    <div id="shop-modal" class="modal hidden">
+      <div class="modal-content">
+        <h2>Cat Shop</h2>
+        <div id="shop-items"></div>
+        <button id="btn-close-shop">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
