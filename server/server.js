@@ -103,9 +103,27 @@ addColumnIfNotExists('cats', 'game_minutes', 'INTEGER DEFAULT 0');
 addColumnIfNotExists('cats', 'game_day', 'INTEGER DEFAULT 1');
 addColumnIfNotExists('cats', 'last_game_tick', 'INTEGER DEFAULT 0');
 addColumnIfNotExists('cats', 'last_ubi_game_day', 'INTEGER DEFAULT 0');
+addColumnIfNotExists('cats', 'game_hour', 'INTEGER DEFAULT 6');
+addColumnIfNotExists('cats', 'last_mess_time', 'INTEGER DEFAULT 0');
+addColumnIfNotExists('cats', 'morning_bonus_claimed', 'INTEGER DEFAULT 0');
 
 // Seed default furniture for new cats
-const STARTER_FURNITURE = ['bed', 'couch', 'cat_bed', 'water_bowl', 'food_bowl', 'sandbox'];
+const STARTER_FURNITURE = ['bed', 'couch', 'cat_bed', 'water_bowl', 'food_bowl', 'sandbox', 'tv', 'tv_stand', 'microwave', 'sink', 'table', 'chair1', 'chair2'];
+const STARTER_FURNITURE_POS = {
+  bed: {x: 40, y: 80},
+  couch: {x: 200, y: 60},
+  cat_bed: {x: 380, y: 380},
+  water_bowl: {x: 500, y: 380},
+  food_bowl: {x: 560, y: 380},
+  sandbox: {x: 650, y: 60},
+  tv: {x: 420, y: 55},
+  tv_stand: {x: 415, y: 110},
+  microwave: {x: 685, y: 145},
+  sink: {x: 685, y: 200},
+  table: {x: 500, y: 185},
+  chair1: {x: 485, y: 250},
+  chair2: {x: 590, y: 250}
+};
 
 // ===== EMAIL SETUP (Ethereal for demo) =====
 let transporter = null;
@@ -141,34 +159,55 @@ function getToday() { return new Date().toISOString().split('T')[0]; }
 function updateGameTime(cat) {
   const now = getNow();
   if (!cat.last_game_tick) {
-    return { ...cat, game_minutes: cat.game_minutes || 0, game_day: cat.game_day || 1 };
+    return { ...cat, game_minutes: cat.game_minutes || 0, game_day: cat.game_day || 1, game_hour: cat.game_hour || 6 };
   }
   const elapsed = now - cat.last_game_tick;
   // Cap at 2 minutes per update to prevent huge jumps
   const capped = Math.min(elapsed, 120);
-  const newMinutes = (cat.game_minutes || 0) + Math.floor(capped / 60);
-  const newDay = Math.floor(newMinutes / 30) + 1;
-  db.prepare('UPDATE cats SET game_minutes = ?, game_day = ?, last_game_tick = ? WHERE id = ?')
-    .run(newMinutes, newDay, now, cat.id);
-  return { ...cat, game_minutes: newMinutes, game_day: newDay, last_game_tick: now };
+  // 1 game hour = 12.5 real seconds = 750ms per game minute
+  const gameMinutesPassed = Math.floor(capped / 12.5 * 60);
+  let newMinutes = (cat.game_minutes || 0) + gameMinutesPassed;
+  let newHour = Math.floor((newMinutes % (24 * 60)) / 60);
+  let newDay = Math.floor(newMinutes / (24 * 60)) + 1;
+  
+  // Reset morning bonus and UBI flags on a new game day
+  let morningBonus = cat.morning_bonus_claimed || 0;
+  let lastUbiDay = cat.last_ubi_game_day || 0;
+  if (newDay > (cat.game_day || 1)) {
+    morningBonus = 0;
+    lastUbiDay = newDay - 1; // effectively allows claiming on new day
+  }
+  // Also reset morning bonus whenever we cross into 6am+
+  if (newHour >= 6 && (cat.game_hour || 0) < 6) {
+    morningBonus = 0;
+  }
+  
+  db.prepare('UPDATE cats SET game_minutes = ?, game_day = ?, game_hour = ?, last_game_tick = ?, morning_bonus_claimed = ?, last_ubi_game_day = ? WHERE id = ?')
+    .run(newMinutes, newDay, newHour, now, morningBonus, lastUbiDay, cat.id);
+  return { ...cat, game_minutes: newMinutes, game_day: newDay, game_hour: newHour, last_game_tick: now, morning_bonus_claimed: morningBonus, last_ubi_game_day: lastUbiDay };
 }
 
 function calculateCatStats(cat) {
   const now = getNow();
-  const hoursSinceFed = (now - cat.last_fed) / 3600;
-  const hoursSincePetted = (now - cat.last_petted) / 3600;
-  const hoursSincePlayed = (now - cat.last_played) / 3600;
+  const gameMinutes = cat.game_minutes || 0;
+  
+  // Game-time-based decay: hunger drops ~10 per game hour, happiness ~5 per game hour
+  const gameHoursSinceFed = gameMinutes / 60; // total game hours since start
+  // But we track last_fed in real time, so use that for fed calculation
+  const realHoursSinceFed = (now - cat.last_fed) / 3600;
+  const realHoursSincePetted = (now - cat.last_petted) / 3600;
+  const realHoursSincePlayed = (now - cat.last_played) / 3600;
 
-  let hunger = cat.hunger - (hoursSinceFed * 5);
-  let happiness = cat.happiness;
+  let hunger = cat.hunger - (realHoursSinceFed * 8);
+  let happiness = cat.happiness - (realHoursSinceFed * 2);
 
   // Hunger affects happiness
   if (hunger < 20) happiness -= 10;
   else if (hunger < 50) happiness -= 3;
 
   // Social needs affect happiness
-  if (hoursSincePetted > 8) happiness -= 5;
-  if (hoursSincePlayed > 12) happiness -= 5;
+  if (realHoursSincePetted > 4) happiness -= 3;
+  if (realHoursSincePlayed > 6) happiness -= 3;
 
   // Messes affect happiness
   const messCount = db.prepare('SELECT COUNT(*) as c FROM messes WHERE user_id = ?').get(cat.user_id)?.c || 0;
@@ -178,15 +217,15 @@ function calculateCatStats(cat) {
   hunger = Math.max(0, Math.min(100, hunger));
   happiness = Math.max(0, Math.min(100, happiness));
 
-  // Growth stage based on age (days)
-  const ageDays = (now - cat.created_at) / 86400;
+  // Growth stage based on game days
+  const gameDays = cat.game_day || 1;
   let stage = 'newborn';
-  if (ageDays > 14) stage = 'kitten';
-  if (ageDays > 30) stage = 'teen';
-  if (ageDays > 60) stage = 'adult';
-  if (ageDays > 200) stage = 'elder';
+  if (gameDays > 3) stage = 'kitten';
+  if (gameDays > 7) stage = 'teen';
+  if (gameDays > 14) stage = 'adult';
+  if (gameDays > 40) stage = 'elder';
 
-  return { hunger, happiness, growth_stage: stage, age: Math.floor(ageDays), game_day: cat.game_day || 1, mess_count: messCount };
+  return { hunger, happiness, growth_stage: stage, age: gameDays - 1, game_day: gameDays, game_hour: cat.game_hour || 6, mess_count: messCount };
 }
 
 function getWellCaredBonus(happiness) {
@@ -203,7 +242,8 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     const result = db.prepare('INSERT INTO users (email, password_hash) VALUES (?, ?)').run(email, hash);
     for (const item of STARTER_FURNITURE) {
-      db.prepare('INSERT INTO furniture (user_id, item_type) VALUES (?, ?)').run(result.lastInsertRowid, item);
+      const pos = STARTER_FURNITURE_POS[item] || {x: 0, y: 0};
+      db.prepare('INSERT INTO furniture (user_id, item_type, x, y) VALUES (?, ?, ?, ?)').run(result.lastInsertRowid, item, pos.x, pos.y);
     }
     db.prepare('INSERT INTO inventory (user_id, item_type, quantity) VALUES (?, ?, ?)').run(result.lastInsertRowid, 'dry_food', 3);
     const token = jwt.sign({ userId: result.lastInsertRowid, email }, JWT_SECRET, { expiresIn: '7d' });
@@ -265,18 +305,29 @@ app.get('/api/cat', authMiddleware, (req, res) => {
   // Update game time
   cat = updateGameTime(cat);
 
-  // Random chance to create mess if enough time passed
+  // Mess generation: only 10-15 min after being fed
   const now = getNow();
-  const elapsed = now - (cat.last_game_tick || now);
+  const minsSinceFed = (now - cat.last_fed) / 60;
+  const minsSinceLastMess = (now - (cat.last_mess_time || 0)) / 60;
   const messCount = db.prepare('SELECT COUNT(*) as c FROM messes WHERE user_id = ?').get(req.user.userId)?.c || 0;
-  if (messCount < 5 && elapsed > 300) {
-    // 15% chance per 5+ minute period
-    if (Math.random() < 0.15) {
+  
+  // Only create mess if 10-15 mins after feeding, and at least 5 mins since last mess
+  if (messCount < 5 && minsSinceFed >= 10 && minsSinceFed <= 15 && minsSinceLastMess >= 5) {
+    if (Math.random() < 0.3) {
       const type = Math.random() < 0.7 ? 'piss' : 'poop';
-      const mx = 80 + Math.random() * 640;
-      const my = 120 + Math.random() * 320;
+      // 75% chance in sandbox area, 25% random
+      let mx, my;
+      if (Math.random() < 0.75) {
+        // Sandbox area
+        mx = 650 + Math.random() * 80;
+        my = 60 + Math.random() * 60;
+      } else {
+        mx = 80 + Math.random() * 640;
+        my = 120 + Math.random() * 320;
+      }
       db.prepare('INSERT INTO messes (user_id, type, x, y) VALUES (?, ?, ?, ?)')
         .run(req.user.userId, type, mx, my);
+      db.prepare('UPDATE cats SET last_mess_time = ? WHERE id = ?').run(now, cat.id);
     }
   }
 
@@ -308,7 +359,14 @@ app.post('/api/cat/feed', authMiddleware, (req, res) => {
     dry: { hunger: 15, happiness: 2, cost: 5 },
     wet: { hunger: 30, happiness: 5, cost: 12 },
     wagyu: { hunger: 60, happiness: 25, cost: 50 },
-    roadkill: { hunger: 10, happiness: -5, cost: 0 }
+    roadkill: { hunger: 10, happiness: -5, cost: 0 },
+    zucchini: { hunger: 20, happiness: 5, cost: 8 },
+    tuna: { hunger: 35, happiness: 10, cost: 18 },
+    salmon: { hunger: 35, happiness: 12, cost: 22 },
+    chicken: { hunger: 40, happiness: 8, cost: 15 },
+    shrimp: { hunger: 25, happiness: 15, cost: 20 },
+    catnip_treat: { hunger: 5, happiness: 35, cost: 25 },
+    sushi: { hunger: 30, happiness: 20, cost: 35 }
   };
   const food = foods[foodType];
   if (!food) return res.status(400).json({ error: 'Unknown food' });
@@ -392,7 +450,8 @@ app.post('/api/cat/reset', authMiddleware, (req, res) => {
   const existingFurn = db.prepare('SELECT COUNT(*) as c FROM furniture WHERE user_id = ?').get(req.user.userId).c;
   if (existingFurn === 0) {
     for (const item of STARTER_FURNITURE) {
-      db.prepare('INSERT INTO furniture (user_id, item_type) VALUES (?, ?)').run(req.user.userId, item);
+      const pos = STARTER_FURNITURE_POS[item] || {x: 0, y: 0};
+      db.prepare('INSERT INTO furniture (user_id, item_type, x, y) VALUES (?, ?, ?, ?)').run(req.user.userId, item, pos.x, pos.y);
     }
     db.prepare('INSERT INTO inventory (user_id, item_type, quantity) VALUES (?, ?, ?)').run(req.user.userId, 'dry_food', 3);
   }
@@ -442,11 +501,31 @@ app.post('/api/catdergarten/return', authMiddleware, (req, res) => {
   db.prepare('UPDATE cats SET is_in_catdergarten = 0, catdergarten_arrived = 0, total_earnings = total_earnings + ? WHERE id = ?').run(earnings, cat.id);
 
   const updated = db.prepare('SELECT * FROM cats WHERE id = ?').get(cat.id);
-  res.json({ cat: { ...updated, ...calculateCatStats(updated) }, earnings, message: `Cat returned! Earned $${earnings}` });
+  res.json({ cat: { ...updated, ...calculateCatStats(updated) }, earnings, message: `Cat returned! Earned $${earnings.toFixed(1)}` });
 });
 
+
+// ===== FURNITURE POSITION =====
+app.post('/api/furniture/move', authMiddleware, (req, res) => {
+  const { furnitureId, x, y } = req.body;
+  if (!furnitureId || x == null || y == null) {
+    return res.status(400).json({ error: 'furnitureId, x, y required' });
+  }
+  const furn = db.prepare('SELECT * FROM furniture WHERE id = ? AND user_id = ?').get(furnitureId, req.user.userId);
+  if (!furn) return res.status(404).json({ error: 'Furniture not found' });
+  db.prepare('UPDATE furniture SET x = ?, y = ? WHERE id = ?').run(x, y, furnitureId);
+  res.json({ message: 'Moved', x, y });
+});
 // ===== SHOP & INVENTORY =====
 app.get('/api/inventory', authMiddleware, (req, res) => {
+  // Auto-migrate: add missing starter furniture for existing users
+  const existingTypes = db.prepare('SELECT item_type FROM furniture WHERE user_id = ? AND room_type = ?').all(req.user.userId, 'home').map(r => r.item_type);
+  for (const item of STARTER_FURNITURE) {
+    if (!existingTypes.includes(item)) {
+      const pos = STARTER_FURNITURE_POS[item] || {x: 0, y: 0};
+      db.prepare('INSERT INTO furniture (user_id, item_type, x, y, room_type) VALUES (?, ?, ?, ?, ?)').run(req.user.userId, item, pos.x, pos.y, 'home');
+    }
+  }
   const items = db.prepare('SELECT * FROM inventory WHERE user_id = ?').all(req.user.userId);
   const furn = db.prepare('SELECT * FROM furniture WHERE user_id = ? AND room_type = ?').all(req.user.userId, 'home');
   const cat = db.prepare('SELECT total_earnings FROM cats WHERE user_id = ?').get(req.user.userId);
@@ -458,10 +537,24 @@ const SHOP_ITEMS = {
   wet_food: { name: 'Wet Cat Food', cost: 12, type: 'food' },
   wagyu_food: { name: 'A5 Wagyu', cost: 50, type: 'food' },
   roadkill_food: { name: 'Roadkill', cost: 0, type: 'food' },
+  zucchini_food: { name: 'Zucchini', cost: 8, type: 'food' },
+  tuna_food: { name: 'Fresh Tuna', cost: 18, type: 'food' },
+  salmon_food: { name: 'Wild Salmon', cost: 22, type: 'food' },
+  chicken_food: { name: 'Chicken Drumstick', cost: 15, type: 'food' },
+  shrimp_food: { name: 'Jumbo Shrimp', cost: 20, type: 'food' },
+  catnip_treat_food: { name: 'Catnip Treat', cost: 25, type: 'food' },
+  sushi_food: { name: 'Cat Sushi', cost: 35, type: 'food' },
   cat_tree: { name: 'Cat Tree', cost: 80, type: 'furniture' },
   lounger: { name: 'Cat Lounger', cost: 45, type: 'furniture' },
   toy_mouse: { name: 'Toy Mouse', cost: 15, type: 'furniture' },
-  scratch_post: { name: 'Scratching Post', cost: 30, type: 'furniture' }
+  scratch_post: { name: 'Scratching Post', cost: 30, type: 'furniture' },
+  tv: { name: 'Flatscreen TV', cost: 120, type: 'furniture' },
+  tv_stand: { name: 'TV Stand', cost: 60, type: 'furniture' },
+  microwave: { name: 'Microwave', cost: 40, type: 'furniture' },
+  sink: { name: 'Kitchen Sink', cost: 55, type: 'furniture' },
+  table: { name: 'Dining Table', cost: 70, type: 'furniture' },
+  chair1: { name: 'Dining Chair', cost: 35, type: 'furniture' },
+  chair2: { name: 'Dining Chair', cost: 35, type: 'furniture' }
 };
 
 app.post('/api/shop/buy', authMiddleware, (req, res) => {
@@ -515,8 +608,31 @@ app.get('/api/ubi/status', authMiddleware, (req, res) => {
   const updatedCat = updateGameTime(cat);
   const currentGameDay = updatedCat.game_day || 1;
   const lastClaimDay = updatedCat.last_ubi_game_day || 0;
+  const gameHour = updatedCat.game_hour || 6;
 
-  res.json({ claimedToday: currentGameDay <= lastClaimDay, amount: null, gameDay: currentGameDay });
+  res.json({ claimedToday: currentGameDay <= lastClaimDay, amount: null, gameDay: currentGameDay, gameHour, morningBonus: updatedCat.morning_bonus_claimed || 0 });
+});
+
+// Morning bonus at 6am
+app.get('/api/morning-bonus', authMiddleware, (req, res) => {
+  const cat = db.prepare('SELECT * FROM cats WHERE user_id = ?').get(req.user.userId);
+  if (!cat) return res.status(404).json({ error: 'No cat' });
+
+  const updatedCat = updateGameTime(cat);
+  const gameHour = updatedCat.game_hour || 6;
+  const morningBonus = updatedCat.morning_bonus_claimed || 0;
+
+  if (gameHour < 6 || gameHour > 8) {
+    return res.status(400).json({ error: 'Morning bonus only available between 6am and 8am!' });
+  }
+  if (morningBonus) {
+    return res.status(400).json({ error: 'Already claimed morning bonus today!' });
+  }
+
+  const bonusAmount = 50;
+  db.prepare('UPDATE cats SET total_earnings = total_earnings + ?, morning_bonus_claimed = 1 WHERE id = ?').run(bonusAmount, updatedCat.id);
+  const refreshed = db.prepare('SELECT * FROM cats WHERE id = ?').get(updatedCat.id);
+  res.json({ amount: bonusAmount, cat: { ...refreshed, ...calculateCatStats(refreshed) } });
 });
 
 // ===== SOCKET.IO CATDERGARTEN =====

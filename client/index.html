@@ -62,7 +62,7 @@
     <!-- MAIN GAME -->
     <div id="game-screen" class="screen hidden">
       <div id="top-bar">
-        <div class="stat"><span class="label">Meowcoins:</span> <span id="stat-money">0</span></div>
+        <div class="stat"><span class="label">Money:</span> <span id="stat-money">0</span></div>
         <div class="stat"><span class="label">Happiness:</span> <div class="bar"><div id="bar-happiness"></div></div></div>
         <div class="stat"><span class="label">Hunger:</span> <div class="bar"><div id="bar-hunger"></div></div></div>
         <div class="stat"><span class="label">Age:</span> <span id="stat-age">0</span> days</div>
@@ -94,13 +94,24 @@
               <button data-food="wet">Wet Food</button>
               <button data-food="wagyu">A5 Wagyu</button>
               <button data-food="roadkill">Roadkill</button>
+              <button data-food="zucchini">Zucchini 🥒</button>
+              <button data-food="tuna">Tuna 🐟</button>
+              <button data-food="salmon">Salmon 🐟</button>
+              <button data-food="chicken">Chicken 🍗</button>
+              <button data-food="shrimp">Shrimp 🦐</button>
+              <button data-food="catnip_treat">Catnip Treat ⭐</button>
+              <button data-food="sushi">Sushi 🍣</button>
               <button id="btn-cancel-feed">Cancel</button>
             </div>
             <button id="btn-clean" class="clean-btn">Clean Up Messes</button>
           </div>
           <div id="catdergarten-box">
             <button id="btn-catdergarten">Send to Catdergarten</button>
-            <p class="hint">Earn Meowcoins while your cat socializes!</p>
+            <p class="hint">Earn dollars while your cat socializes!</p>
+          </div>
+          <div id="food-inventory-box">
+            <h4>Food Inventory</h4>
+            <div id="food-inventory-list"></div>
           </div>
         </div>
       </div>
