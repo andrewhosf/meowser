@@ -1,5 +1,7 @@
 node_modules/
 *.db
+*.sqlite
 .env
 .vercel
 .DS_Store
+server/db.sqlite
