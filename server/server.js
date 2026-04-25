@@ -273,7 +273,21 @@ function getWellCaredBonus(happiness) {
   return happiness >= 70 ? 0.20 : 0;
 }
 
-// ===== AUTH ROUTES =====
+// ===== ACCOUNT RESET (delete and re-register) =====
+app.post('/api/auth/account-reset', async (req, res) => {
+  const { email } = req.body;
+  const user = await get('SELECT * FROM users WHERE email = ?', email);
+  if (!user) return res.json({ message: 'If account exists, it has been reset' });
+
+  await run('DELETE FROM cats WHERE user_id = ?', user.id);
+  await run('DELETE FROM inventory WHERE user_id = ?', user.id);
+  await run('DELETE FROM furniture WHERE user_id = ?', user.id);
+  await run('DELETE FROM messes WHERE user_id = ?', user.id);
+  await run('DELETE FROM ubi_claims WHERE user_id = ?', user.id);
+  await run('DELETE FROM users WHERE id = ?', user.id);
+
+  res.json({ message: 'Account reset. You can now register again with the same email.' });
+});
 app.post('/api/auth/register', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password || password.length < 6) {

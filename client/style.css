@@ -109,6 +109,16 @@ button:disabled {
 
 .msg.ok { color: #2a9d8f; }
 .msg.err { color: #e76f51; }
+.warn-msg {
+  color: #e76f51;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 8px 0;
+  padding: 8px;
+  background: #fff3f0;
+  border-radius: 8px;
+  border: 1px solid #f4a261;
+}
 
 /* CREATE */
 .create-box {

@@ -19,11 +19,12 @@
           <input type="password" id="auth-password" placeholder="Password (min 6 chars)" autocomplete="current-password">
           <button id="btn-login">Login</button>
           <button id="btn-register">Register</button>
-          <p class="link" id="link-forgot">Forgot password?</p>
+          <p class="link" id="link-forgot">Reset account?</p>
         </div>
         <div id="forgot-form" class="hidden">
+          <p class="warn-msg">This will delete your account and all cat data. You will need to register again.</p>
           <input type="email" id="forgot-email" placeholder="Your email">
-          <button id="btn-send-reset">Send Reset Link</button>
+          <button id="btn-send-reset">Reset My Account</button>
           <p class="link" id="link-back">Back to login</p>
           <p id="reset-msg" class="msg"></p>
         </div>

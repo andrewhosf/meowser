@@ -129,8 +129,8 @@ document.getElementById('link-back').onclick = () => {
 document.getElementById('btn-send-reset').onclick = async () => {
   const email = document.getElementById('forgot-email').value;
   try {
-    await api('POST', '/api/auth/forgot-password', { email });
-    document.getElementById('reset-msg').textContent = 'Reset link sent (check console/server log for demo URL)';
+    const data = await api('POST', '/api/auth/account-reset', { email });
+    document.getElementById('reset-msg').textContent = data.message;
     document.getElementById('reset-msg').className = 'msg ok';
   } catch (e) {
     document.getElementById('reset-msg').textContent = e.message;
