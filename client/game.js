@@ -992,23 +992,23 @@ function drawFurnitureItem(key, f) {
   } else if (key === 'tv_stand') {
     // Simple TV stand with shelves
     ctx.fillStyle = '#5d4037';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeRect(x, y, w, h);
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeRect(0, 0, w, h);
     // Shelf lines
     ctx.strokeStyle = '#4e342e';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(x + 5, y + h/2);
-    ctx.lineTo(x + w - 5, y + h/2);
+    ctx.moveTo(5, h/2);
+    ctx.lineTo(w - 5, h/2);
     ctx.stroke();
     // Items on shelf
     ctx.fillStyle = '#78909c';
-    ctx.fillRect(x + 8, y + 4, 12, 8);
-    ctx.fillRect(x + 25, y + 4, 10, 8);
+    ctx.fillRect(8, 4, 12, 8);
+    ctx.fillRect(25, 4, 10, 8);
 
   } else if (key === 'microwave') {
     // Microwave oven
-    const mx = x, my = y, mw = w, mh = h;
+    const mx = 0, my = 0, mw = w, mh = h;
     // Body
     ctx.fillStyle = '#b0bec5';
     ctx.fillRect(mx, my, mw, mh);
@@ -1079,7 +1079,7 @@ function drawFurnitureItem(key, f) {
 
   } else if (key === 'chair1' || key === 'chair2') {
     // Simple chair
-    const cx = x, cy = y, cw = w, ch = h;
+    const cx = 0, cy = 0, cw = w, ch = h;
     // Seat
     ctx.fillStyle = '#a1887f';
     ctx.fillRect(cx, cy + ch/2, cw, ch/2);
@@ -1095,7 +1095,7 @@ function drawFurnitureItem(key, f) {
 
   } else if (key === 'couch') {
     // 3D Couch with back, arms, cushions, legs
-    const cx = x, cy = y, cw = w, ch = h;
+    const cx = 0, cy = 0, cw = w, ch = h;
     // Backrest (tall, behind)
     ctx.fillStyle = '#b08d5e';
     ctx.beginPath();
@@ -1212,7 +1212,7 @@ function drawFurnitureItem(key, f) {
 
   } else if (key === 'cat_bed') {
     // Donut cat bed with fluffy walls
-    const cx = x + w/2, cy = y + h/2, rx = w/2, ry = h/2;
+    const cx = w/2, cy = h/2, rx = w/2, ry = h/2;
     // Outer fluffy rim (darker)
     ctx.fillStyle = '#c65a3b';
     ctx.beginPath();
@@ -1242,7 +1242,7 @@ function drawFurnitureItem(key, f) {
 
   } else if (key === 'water_bowl') {
     // Realistic bowl with water
-    const cx = x + w/2, cy = y + h/2;
+    const cx = w/2, cy = h/2;
     // Bowl outer (ceramic)
     ctx.fillStyle = '#e0f7fa';
     ctx.beginPath();
@@ -1274,7 +1274,7 @@ function drawFurnitureItem(key, f) {
 
   } else if (key === 'food_bowl') {
     // Realistic bowl with food
-    const cx = x + w/2, cy = y + h/2;
+    const cx = w/2, cy = h/2;
     // Bowl outer
     ctx.fillStyle = '#f5e6d3';
     ctx.beginPath();
@@ -1508,7 +1508,7 @@ function drawFurnitureItem(key, f) {
 
   } else if (key === 'lounger') {
     // Chaise lounger
-    const lx = x, ly = y, lw = w, lh = h;
+    const lx = 0, ly = 0, lw = w, lh = h;
     // Backrest (angled)
     ctx.fillStyle = '#e08d4f';
     ctx.beginPath();
@@ -1534,7 +1534,7 @@ function drawFurnitureItem(key, f) {
 
   } else if (key === 'toy_mouse') {
     // Detailed mouse with ears, tail, eyes
-    const mx = x + w/2, my = y + h/2;
+    const mx = w/2, my = h/2;
     // Body
     ctx.fillStyle = '#adb5bd';
     ctx.beginPath();
