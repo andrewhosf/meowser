@@ -707,7 +707,7 @@ function logChat(text, system) {
 const ROOM_W = 800, ROOM_H = 500;
 const FURNITURE_LAYOUT = {
   bed: { x: 40, y: 80, w: 120, h: 90, color: '#8ab6d6' },
-  couch: { x: 200, y: 60, w: 160, h: 80, color: '#c8a97e' },
+  couch: { x: 200, y: 150, w: 160, h: 80, color: '#c8a97e' },
   cat_bed: { x: 380, y: 380, w: 80, h: 60, color: '#e76f51' },
   water_bowl: { x: 500, y: 380, w: 40, h: 30, color: '#90e0ef' },
   food_bowl: { x: 560, y: 380, w: 40, h: 30, color: '#d4a373' },
@@ -716,8 +716,8 @@ const FURNITURE_LAYOUT = {
   lounger: { x: 280, y: 380, w: 80, h: 60, color: '#f4a261' },
   toy_mouse: { x: 250, y: 220, w: 30, h: 20, color: '#adb5bd' },
   scratch_post: { x: 30, y: 220, w: 40, h: 100, color: '#d4a373' },
-  tv: { x: 420, y: 55, w: 90, h: 55, color: '#2d2d2d' },
-  tv_stand: { x: 415, y: 110, w: 100, h: 25, color: '#5d4037' },
+  tv: { x: 530, y: 55, w: 90, h: 55, color: '#2d2d2d' },
+  tv_stand: { x: 525, y: 110, w: 100, h: 25, color: '#5d4037' },
   microwave: { x: 685, y: 145, w: 50, h: 30, color: '#b0bec5' },
   sink: { x: 685, y: 200, w: 65, h: 40, color: '#cfd8dc' },
   table: { x: 500, y: 185, w: 100, h: 55, color: '#8d6e63' },

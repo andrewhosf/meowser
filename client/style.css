@@ -360,8 +360,19 @@ input[type="color"] {
     max-width: 100%;
     border-radius: 24px 24px 0 0;
     max-height: 85dvh;
-    padding: 24px 20px calc(24px + env(safe-area-inset-bottom));
+    padding: 14px 20px calc(18px + env(safe-area-inset-bottom));
   }
+  .modal-content::before {
+    content: '';
+    display: block;
+    width: 40px; height: 4px;
+    border-radius: 2px;
+    background: #cfc3b0;
+    margin: 0 auto 12px;
+  }
+  .modal-content h2 { margin-bottom: 10px; }
+  #chat-log { min-height: 44px; flex: 0 1 auto; max-height: 96px; }
+  #chat-options, #feed-options { gap: 12px; }
   #catdergarten-canvas { width: 100%; height: auto; }
   #catdergarten-chat { width: 100%; flex-wrap: wrap; }
   #cd-input { flex: 1 1 60%; }
@@ -583,8 +594,14 @@ input[type="color"] {
   max-width: 500px;
   max-height: 80vh;
   max-height: 80dvh;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   box-shadow: var(--shadow-lg);
+}
+#shop-items {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  min-height: 0; /* let flex child shrink so header/close stay pinned */
 }
 
 .modal-content h2 {

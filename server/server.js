@@ -155,13 +155,13 @@ initDb().catch(err => {
 const STARTER_FURNITURE = ['bed', 'couch', 'cat_bed', 'water_bowl', 'food_bowl', 'sandbox', 'tv', 'tv_stand', 'microwave', 'sink', 'table', 'chair1', 'chair2'];
 const STARTER_FURNITURE_POS = {
   bed: {x: 40, y: 80},
-  couch: {x: 200, y: 60},
+  couch: {x: 200, y: 150},
   cat_bed: {x: 380, y: 380},
   water_bowl: {x: 500, y: 380},
   food_bowl: {x: 560, y: 380},
   sandbox: {x: 650, y: 60},
-  tv: {x: 420, y: 55},
-  tv_stand: {x: 415, y: 110},
+  tv: {x: 530, y: 55},
+  tv_stand: {x: 525, y: 110},
   microwave: {x: 685, y: 145},
   sink: {x: 685, y: 200},
   table: {x: 500, y: 185},
