@@ -2960,8 +2960,12 @@ function drawPettedCat(fur, eye, type, bounce, frame) {
   ctx.arc(-15 + purrVibe, 15, 18, Math.PI, Math.PI * 1.7);
   ctx.stroke();
 
-  // Body vibrating
-  ctx.fillStyle = fur;
+  // Body vibrating (volume shading)
+  const petBodyG = ctx.createRadialGradient(-6 + purrVibe, -4, 4, purrVibe, 5, 32);
+  petBodyG.addColorStop(0, shadeColor(fur, 16));
+  petBodyG.addColorStop(0.65, fur);
+  petBodyG.addColorStop(1, shadeColor(fur, -18));
+  ctx.fillStyle = petBodyG;
   ctx.beginPath();
   ctx.ellipse(purrVibe, 5, 22, 26, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -2969,11 +2973,15 @@ function drawPettedCat(fur, eye, type, bounce, frame) {
   if (type === 'Calico') drawCalicoPatches(ctx, fur, purrVibe, 5, 22, 26);
 
   // Front legs tucked
+  ctx.fillStyle = fur;
   ctx.fillRect(-12 + purrVibe, 18, 8, 14);
   ctx.fillRect(4 + purrVibe, 18, 8, 14);
 
-  // Head
-  ctx.fillStyle = fur;
+  // Head (gradient)
+  const petHeadG = ctx.createRadialGradient(6 + purrVibe, -30 + bounce, 3, 10 + purrVibe, -22 + bounce, 24);
+  petHeadG.addColorStop(0, shadeColor(fur, 14));
+  petHeadG.addColorStop(1, fur);
+  ctx.fillStyle = petHeadG;
   ctx.beginPath();
   ctx.arc(10 + purrVibe, -22 + bounce, 20, 0, Math.PI * 2);
   ctx.fill();
@@ -3005,8 +3013,12 @@ function drawPlayCat(fur, eye, type, bounce, isWalking, frame) {
   ctx.save();
   ctx.scale(scale, scale);
 
-  // Body (crouched, ready to pounce)
-  ctx.fillStyle = fur;
+  // Body (crouched, ready to pounce) — volume shading
+  const playBodyG = ctx.createRadialGradient(-6, 8, 4, 0, 15, 30);
+  playBodyG.addColorStop(0, shadeColor(fur, 16));
+  playBodyG.addColorStop(0.65, fur);
+  playBodyG.addColorStop(1, shadeColor(fur, -18));
+  ctx.fillStyle = playBodyG;
   ctx.beginPath();
   ctx.ellipse(0, 15, 26, 18, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -3014,13 +3026,18 @@ function drawPlayCat(fur, eye, type, bounce, isWalking, frame) {
   if (type === 'Calico') drawCalicoPatches(ctx, fur, 0, 15, 26, 18);
 
   // Back legs (coiled)
+  ctx.fillStyle = fur;
   ctx.fillRect(-18, 20, 10, 12);
   ctx.fillRect(8, 20, 10, 12);
   // Front legs (reaching)
   ctx.fillRect(-10, 22, 7, 14);
   ctx.fillRect(6, 22, 7, 14);
 
-  // Head (alert, looking forward)
+  // Head (alert, looking forward) — gradient
+  const playHeadG = ctx.createRadialGradient(8, -20 + bounce, 3, 12, -12 + bounce, 24);
+  playHeadG.addColorStop(0, shadeColor(fur, 14));
+  playHeadG.addColorStop(1, fur);
+  ctx.fillStyle = playHeadG;
   ctx.beginPath();
   ctx.arc(12, -12 + bounce, 20, 0, Math.PI * 2);
   ctx.fill();
