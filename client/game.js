@@ -10,13 +10,33 @@ let isDragging = false;
 
 function getCanvasMousePos(e) {
   const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
+  const scaleX = ROOM_W / rect.width;   // logical coords, DPR-independent
+  const scaleY = ROOM_H / rect.height;
   return {
     x: (e.clientX - rect.left) * scaleX,
     y: (e.clientY - rect.top) * scaleY
   };
 }
+
+// ===== HiDPI SHARP RENDERING =====
+// Back the canvas with devicePixelRatio pixels; drawing code keeps using
+// logical 800x500 coordinates via the base transform (never reset elsewhere).
+function setupHiDPI(cvs, lw, lh) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cvs.width = Math.round(lw * dpr);
+  cvs.height = Math.round(lh * dpr);
+  const c = cvs.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return c;
+}
+let dprLast = window.devicePixelRatio || 1;
+window.addEventListener('resize', () => {
+  if ((window.devicePixelRatio || 1) !== dprLast) {
+    dprLast = window.devicePixelRatio || 1;
+    setupHiDPI(canvas, ROOM_W, ROOM_H);
+    setupHiDPI(cdCanvas, 800, 500);
+  }
+});
 let furnitureRotation = {}; // item_type -> rotation angle
 let gameHour = 6;
 let isNight = false;
@@ -54,6 +74,7 @@ const resetForm = document.getElementById('reset-form');
 const canvas = document.getElementById('room');
 // ctx is swapped to the catdergarten canvas while drawing multiplayer cats
 let ctx = canvas.getContext('2d');
+setupHiDPI(canvas, 800, 500);   // ROOM_W/ROOM_H defined below at 800x500
 let activeCdCat = null;   // catdergarten cat whose colors the pose helpers should use
 function withCtx(other, fn) {
   const saved = ctx; ctx = other;
@@ -630,7 +651,43 @@ function updateStats() {
 
   barHunger.style.width = hu + '%';
   barHunger.className = hu < 30 ? 'low' : hu < 60 ? 'mid' : '';
+
+  // Mood (tamagotchi-style readout)
+  const moodEl = document.getElementById('cat-mood');
+  if (moodEl) {
+    let mood;
+    if (hu < 25) mood = '😿 Hungry';
+    else if (h < 25) mood = '😾 Grumpy';
+    else if (h < 55) mood = '😐 Meh';
+    else if (h >= 80 && hu >= 60) mood = '😸 Thriving';
+    else mood = '🙂 Content';
+    moodEl.textContent = mood;
+  }
 }
+
+// ===== CAT-INITIATED NEEDS (tamagotchi nudges) =====
+// Every so often the cat speaks up based on how it's feeling — this is what
+// pulls the player back into interactions instead of waiting on decay.
+setInterval(() => {
+  if (!currentCat || !screens.game || screens.game.classList.contains('hidden')) return;
+  if (catSleeping || catEntity.state === 'nap') return;
+  if (catEntity.bubble || catEntity.heartTimer > 0) return;
+  if (Math.random() > 0.5) return; // keep it ambient, not nagging
+  const hu = currentCat.hunger || 0;
+  const h = currentCat.happiness || 0;
+  let text = null;
+  if (hu < 20) text = 'Feed me! Meow!';
+  else if (hu < 40) text = 'Meow... *looks at bowl*';
+  else if (messes.length > 0 && Math.random() < 0.35) text = 'It stinks over here...';
+  else if (h < 35) text = 'Play with me?';
+  else if (h < 55) text = 'Pet me?';
+  else if (Math.random() < 0.25) text = ['Meow.', 'Mrrp?', 'Purrrr...', '*blinks slowly*', 'Mew!'][Math.floor(Math.random() * 5)];
+  if (text) {
+    catEntity.bubble = { text, timer: 180 };
+    // come to the player when really needy
+    if (hu < 20 || h < 35) { catEntity.targetX = 400; catEntity.targetY = 300; catEntity.state = 'walk'; }
+  }
+}, 25000);
 
 function logChat(text, system) {
   const div = document.createElement('div');
@@ -2899,6 +2956,31 @@ function playPurrSound() {
 }
 
 // ===== INTERACTIONS =====
+let petCooldownUntil = 0;
+async function doPet() {
+  if (Date.now() < petCooldownUntil) return;   // mash-proof, saves API calls
+  petCooldownUntil = Date.now() + 1500;
+  try {
+    const data = await api('POST', '/api/cat/pet');
+    currentCat = data.cat;
+    updateStats();
+    logChat(data.message, false);
+    catEntity.heartTimer = 180;
+    catEntity.bubble = { text: 'Purr...', timer: 180 };
+    // Hand on cat's head
+    pettingHand = { x: catEntity.x + (catEntity.facing * 12), y: catEntity.y - 35, timer: 180 };
+    catEntity.state = 'petted';
+    catEntity.timer = 0;
+    catEntity.targetX = null;
+    catEntity.targetY = null;
+    catEntity.vx = 0;
+    catEntity.vy = 0;
+    playPurrSound();
+  } catch (e) {
+    logChat(e.message, true);
+  }
+}
+
 chatOptions.querySelectorAll('button[data-action]').forEach(btn => {
   btn.onclick = async () => {
     const action = btn.dataset.action;
@@ -2907,25 +2989,14 @@ chatOptions.querySelectorAll('button[data-action]').forEach(btn => {
       feedOptions.classList.remove('hidden');
       return;
     }
+    if (action === 'pet') { await doPet(); return; }
     try {
       const data = await api('POST', `/api/cat/${action}`);
       currentCat = data.cat;
       updateStats();
       logChat(data.message, false);
 
-      if (action === 'pet') {
-        catEntity.heartTimer = 180;
-        catEntity.bubble = { text: 'Purr...', timer: 180 };
-        // Hand on cat's head
-        pettingHand = { x: catEntity.x + (catEntity.facing * 12), y: catEntity.y - 35, timer: 180 };
-        catEntity.state = 'petted';
-        catEntity.timer = 0;
-        catEntity.targetX = null;
-        catEntity.targetY = null;
-        catEntity.vx = 0;
-        catEntity.vy = 0;
-        playPurrSound();
-      } else if (action === 'talk') {
+      if (action === 'talk') {
         catEntity.bubble = { text: data.message, timer: 120 };
       } else if (action === 'play') {
         catEntity.state = 'play';
@@ -3032,9 +3103,11 @@ async function checkUbiStatus() {
     if (data.claimedToday) {
       btn.disabled = true;
       btn.textContent = 'Claimed Today';
+      btn.classList.remove('ready');
     } else {
       btn.disabled = false;
       btn.textContent = 'Claim Daily Catstream';
+      btn.classList.add('ready');
     }
     if (data.gameDay) statGameDay.textContent = data.gameDay;
   } catch (e) { /* ignore */ }
@@ -3068,25 +3141,42 @@ const SHOP_DEF = [
 
 document.getElementById('btn-shop').onclick = () => {
   shopItems.innerHTML = '';
-  for (const item of SHOP_DEF) {
-    const div = document.createElement('div');
-    div.className = 'shop-item';
-    div.innerHTML = `<div><span>${item.name}</span> <small>${item.desc}</small></div><div>$${item.cost} <button>Buy</button></div>`;
-    div.querySelector('button').onclick = async () => {
-      try {
-        const data = await api('POST', '/api/shop/buy', { itemId: item.id });
-        await loadInventory();
-        currentCat.total_earnings = data.money;
-        updateStats();
-        logChat(data.message, true);
-      } catch (e) {
-        logChat(e.message, true);
-      }
-    };
-    shopItems.appendChild(div);
+  const money = currentCat ? (currentCat.total_earnings || 0) : 0;
+  const sections = [
+    { title: 'Food', items: SHOP_DEF.filter(i => i.id.endsWith('_food')) },
+    { title: 'Furniture & Toys', items: SHOP_DEF.filter(i => !i.id.endsWith('_food')) }
+  ];
+  for (const sec of sections) {
+    const h = document.createElement('div');
+    h.className = 'shop-section-title';
+    h.textContent = sec.title;
+    shopItems.appendChild(h);
+    for (const item of sec.items) {
+      const div = document.createElement('div');
+      div.className = 'shop-item';
+      div.innerHTML = `<div class="shop-item-info"><span>${item.name}</span><small>${item.desc}</small></div><button ${money < item.cost ? 'disabled' : ''}>$${item.cost}</button>`;
+      div.querySelector('button').onclick = async () => {
+        try {
+          const data = await api('POST', '/api/shop/buy', { itemId: item.id });
+          await loadInventory();
+          currentCat.total_earnings = data.money;
+          updateStats();
+          logChat(data.message, true);
+          document.getElementById('btn-shop').onclick(); // refresh affordability
+        } catch (e) {
+          logChat(e.message, true);
+        }
+      };
+      shopItems.appendChild(div);
+    }
   }
   shopModal.classList.remove('hidden');
 };
+
+// Tap the dim backdrop to dismiss the shop (mobile-friendly)
+shopModal.addEventListener('click', (e) => {
+  if (e.target === shopModal) shopModal.classList.add('hidden');
+});
 
 document.getElementById('btn-close-shop').onclick = () => {
   shopModal.classList.add('hidden');
@@ -3173,7 +3263,7 @@ const DONATION_MESSAGES = [
   'sent a super chat!', 'tipped $3!', 'became a VIP!'
 ];
 const cdCanvas = document.getElementById('catdergarten-canvas');
-const cdCtx = cdCanvas.getContext('2d');
+const cdCtx = setupHiDPI(cdCanvas, 800, 500);
 
 document.getElementById('btn-cd-send').onclick = sendCdChat;
 document.getElementById('cd-input').onkeydown = (e) => { if (e.key === 'Enter') sendCdChat(); };
@@ -3482,7 +3572,7 @@ function drawSimpleCat(sctx, x, y, color, name, frame) {
 drawCatdergarten();
 
 // Canvas mouse handlers for cat movement and furniture dragging
-canvas.addEventListener('mousedown', (e) => {
+canvas.addEventListener('pointerdown', (e) => {
   const pos = getCanvasMousePos(e);
   const mx = pos.x;
   const my = pos.y;
@@ -3510,7 +3600,7 @@ canvas.addEventListener('mousedown', (e) => {
   }
 });
 
-canvas.addEventListener('mousemove', (e) => {
+canvas.addEventListener('pointermove', (e) => {
   if (!dragFurniture) return;
   const pos = getCanvasMousePos(e);
   const mx = pos.x;
@@ -3528,8 +3618,15 @@ canvas.addEventListener('mousemove', (e) => {
   dragFurniture.y = ny;
 });
 
-canvas.addEventListener('mouseup', async (e) => {
-  if (!dragFurniture) return;
+canvas.addEventListener('pointerup', async (e) => {
+  if (!dragFurniture) {
+    // Tapping the cat directly = pet it (works with touch)
+    const pos = getCanvasMousePos(e);
+    const dx = pos.x - catEntity.x, dy = pos.y - (catEntity.y - 15);
+    if (Math.sqrt(dx * dx + dy * dy) < 45) { await doPet(); return; }
+    if (!catSleeping) setCatTarget(pos.x, pos.y, 'walk');
+    return;
+  }
   if (isDragging) {
     // Save position to server
     try {
@@ -3546,6 +3643,11 @@ canvas.addEventListener('mouseup', async (e) => {
     const pos = getCanvasMousePos(e);
     setCatTarget(pos.x, pos.y, 'walk');
   }
+  dragFurniture = null;
+  isDragging = false;
+});
+
+canvas.addEventListener('pointercancel', () => {
   dragFurniture = null;
   isDragging = false;
 });
