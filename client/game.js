@@ -1033,15 +1033,17 @@ function drawRoom() {
     else { floor.addColorStop(0, '#f8eedb'); floor.addColorStop(1, '#eedfc2'); }
     b.fillStyle = floor;
     b.fillRect(0, 42, ROOM_W, ROOM_H - 42);
-    b.strokeStyle = isNight ? 'rgba(255,235,190,0.045)' : 'rgba(150,110,55,0.10)';
+    b.strokeStyle = isNight ? 'rgba(255,235,190,0.035)' : 'rgba(150,110,55,0.07)';
     b.lineWidth = 1;
     for (let y = 78; y < ROOM_H; y += 56) {
       b.beginPath(); b.moveTo(0, y); b.lineTo(ROOM_W, y); b.stroke();
     }
+    // Staggered plank butt-joints (short, not full-height — reads as wood, not grid)
+    b.strokeStyle = isNight ? 'rgba(255,235,190,0.05)' : 'rgba(150,110,55,0.11)';
     for (let y = 78; y < ROOM_H; y += 56) {
-      const off = (y / 56) % 2 ? 60 : 0;
-      for (let x = off; x < ROOM_W; x += 160) {
-        b.beginPath(); b.moveTo(x, y - 56 + (y === 78 ? 36 : 0)); b.lineTo(x, y); b.stroke();
+      const off = (y / 56) % 2 ? 80 : 0;
+      for (let x = off + 40; x < ROOM_W; x += 160) {
+        b.beginPath(); b.moveTo(x, y - 46); b.lineTo(x, y - 6); b.stroke();
       }
     }
 
@@ -1208,6 +1210,7 @@ function drawFurnitureItem(key, f) {
   const y = (f && f.y != null && f.y !== 0) ? f.y : l.y;
   const w = l.w, h = l.h;
   const rot = (f && f.rotation) || 0;
+  _vfH = h; // vfill() gradient span for this item
 
   // Contact shadow (drawn unrotated, on the floor plane)
   ctx.fillStyle = 'rgba(50,35,15,0.10)';
@@ -1227,18 +1230,18 @@ function drawFurnitureItem(key, f) {
     // 3D Bed with headboard, mattress, pillow, blanket
     const hx = 0, hy = 0, hw = w, hh = h;
     // Headboard (darker, behind)
-    ctx.fillStyle = '#6a9ab5';
+    ctx.fillStyle = vfill('#6a9ab5');
     ctx.fillRect(hx + 5, hy - 15, hw - 10, 20);
     ctx.strokeRect(hx + 5, hy - 15, hw - 10, 20);
     // Headboard detail
-    ctx.fillStyle = '#5a8aa5';
+    ctx.fillStyle = vfill('#5a8aa5');
     ctx.fillRect(hx + 15, hy - 10, hw - 30, 10);
     // Mattress base
-    ctx.fillStyle = '#8ab6d6';
+    ctx.fillStyle = vfill('#8ab6d6');
     ctx.fillRect(hx, hy + 5, hw, hh - 5);
     ctx.strokeRect(hx, hy + 5, hw, hh - 5);
     // Mattress top (lighter)
-    ctx.fillStyle = '#9ec6e6';
+    ctx.fillStyle = vfill('#9ec6e6');
     ctx.fillRect(hx + 3, hy + 5, hw - 6, 12);
     // Pillow
     ctx.fillStyle = '#fff';
@@ -1252,7 +1255,7 @@ function drawFurnitureItem(key, f) {
     ctx.ellipse(hx + hw/2, hy + 20, hw/2 - 18, 5, 0, 0, Math.PI*2);
     ctx.fill();
     // Blanket (lower half, draped)
-    ctx.fillStyle = '#7ab6c6';
+    ctx.fillStyle = vfill('#7ab6c6');
     ctx.beginPath();
     ctx.moveTo(hx, hy + 30);
     ctx.lineTo(hx + hw, hy + 30);
@@ -1269,22 +1272,34 @@ function drawFurnitureItem(key, f) {
     ctx.quadraticCurveTo(hx + hw/2, hy + 45, hx + hw - 10, hy + 35);
     ctx.stroke();
     // Legs
-    ctx.fillStyle = '#8d6e63';
+    ctx.fillStyle = vfill('#8d6e63');
     ctx.fillRect(hx + 5, hy + hh, 6, 8);
     ctx.fillRect(hx + hw - 11, hy + hh, 6, 8);
 
   } else if (key === 'tv') {
     // Flatscreen TV on wall
     const tx = 0, ty = 0, tw = w, th = h;
-    // Screen (black, glossy)
-    ctx.fillStyle = '#1a1a1a';
+    // Screen (deep charcoal gradient, reads as glass, not a black hole)
+    const scr = ctx.createLinearGradient(tx, ty, tx + tw * 0.6, ty + th);
+    scr.addColorStop(0, '#2b3138');
+    scr.addColorStop(0.5, '#16191d');
+    scr.addColorStop(1, '#0a0c0e');
+    ctx.fillStyle = scr;
     ctx.beginPath();
     ctx.roundRect(tx, ty, tw, th, 4);
     ctx.fill();
-    ctx.strokeStyle = '#444';
+    ctx.strokeStyle = '#3a424a';
     ctx.stroke();
+    // Bezel top highlight
+    ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(tx + 5, ty + 1.5);
+    ctx.lineTo(tx + tw - 5, ty + 1.5);
+    ctx.stroke();
+    ctx.strokeStyle = '#a09080';
     // Screen reflection
-    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
     ctx.beginPath();
     ctx.moveTo(tx + tw*0.6, ty + 4);
     ctx.lineTo(tx + tw - 4, ty + 4);
@@ -1293,18 +1308,18 @@ function drawFurnitureItem(key, f) {
     ctx.closePath();
     ctx.fill();
     // Stand
-    ctx.fillStyle = '#3d3d3d';
+    ctx.fillStyle = vfill('#3d3d3d');
     ctx.fillRect(tx + tw/2 - 8, ty + th, 16, 8);
     ctx.fillRect(tx + tw/2 - 20, ty + th + 8, 40, 4);
     // Power LED
-    ctx.fillStyle = '#00e676';
+    ctx.fillStyle = vfill('#00e676');
     ctx.beginPath();
     ctx.arc(tx + tw - 8, ty + th - 6, 2, 0, Math.PI*2);
     ctx.fill();
 
   } else if (key === 'tv_stand') {
     // Simple TV stand with shelves
-    ctx.fillStyle = '#5d4037';
+    ctx.fillStyle = vfill('#5d4037');
     ctx.fillRect(0, 0, w, h);
     ctx.strokeRect(0, 0, w, h);
     // Shelf lines
@@ -1315,7 +1330,7 @@ function drawFurnitureItem(key, f) {
     ctx.lineTo(w - 5, h/2);
     ctx.stroke();
     // Items on shelf
-    ctx.fillStyle = '#78909c';
+    ctx.fillStyle = vfill('#78909c');
     ctx.fillRect(8, 4, 12, 8);
     ctx.fillRect(25, 4, 10, 8);
 
@@ -1323,21 +1338,21 @@ function drawFurnitureItem(key, f) {
     // Microwave oven
     const mx = 0, my = 0, mw = w, mh = h;
     // Body
-    ctx.fillStyle = '#b0bec5';
+    ctx.fillStyle = vfill('#b0bec5');
     ctx.fillRect(mx, my, mw, mh);
     ctx.strokeRect(mx, my, mw, mh);
     // Door window
-    ctx.fillStyle = '#37474f';
+    ctx.fillStyle = vfill('#37474f');
     ctx.fillRect(mx + 4, my + 4, mw - 20, mh - 8);
     ctx.strokeRect(mx + 4, my + 4, mw - 20, mh - 8);
     // Window reflection
     ctx.fillStyle = 'rgba(255,255,255,0.1)';
     ctx.fillRect(mx + 6, my + 6, mw - 28, mh - 14);
     // Control panel
-    ctx.fillStyle = '#90a4ae';
+    ctx.fillStyle = vfill('#90a4ae');
     ctx.fillRect(mx + mw - 14, my + 4, 10, mh - 8);
     // Buttons
-    ctx.fillStyle = '#455a64';
+    ctx.fillStyle = vfill('#455a64');
     ctx.fillRect(mx + mw - 12, my + 7, 6, 3);
     ctx.fillRect(mx + mw - 12, my + 12, 6, 3);
     ctx.fillRect(mx + mw - 12, my + 17, 6, 3);
@@ -1346,17 +1361,17 @@ function drawFurnitureItem(key, f) {
     // Kitchen sink
     const sx = 0, sy = 0, sw = w, sh = h;
     // Countertop
-    ctx.fillStyle = '#cfd8dc';
+    ctx.fillStyle = vfill('#cfd8dc');
     ctx.fillRect(sx - 5, sy, sw + 10, sh);
     ctx.strokeRect(sx - 5, sy, sw + 10, sh);
     // Basin
-    ctx.fillStyle = '#b0bec5';
+    ctx.fillStyle = vfill('#b0bec5');
     ctx.beginPath();
     ctx.ellipse(sx + sw/2, sy + sh/2 + 3, sw/2 - 4, sh/2 - 6, 0, 0, Math.PI*2);
     ctx.fill();
     ctx.stroke();
     // Water
-    ctx.fillStyle = '#81d4fa';
+    ctx.fillStyle = vfill('#81d4fa');
     ctx.beginPath();
     ctx.ellipse(sx + sw/2, sy + sh/2 + 5, sw/2 - 8, sh/2 - 10, 0, 0, Math.PI*2);
     ctx.fill();
@@ -1372,7 +1387,7 @@ function drawFurnitureItem(key, f) {
     // Dining table with legs
     const tx = 0, ty = 0, tw = w, th = h;
     // Tabletop
-    ctx.fillStyle = '#8d6e63';
+    ctx.fillStyle = vfill('#8d6e63');
     ctx.fillRect(tx, ty, tw, th - 10);
     ctx.strokeRect(tx, ty, tw, th - 10);
     // Wood grain lines
@@ -1385,7 +1400,7 @@ function drawFurnitureItem(key, f) {
       ctx.stroke();
     }
     // Legs
-    ctx.fillStyle = '#6d4c41';
+    ctx.fillStyle = vfill('#6d4c41');
     ctx.fillRect(tx + 5, ty + th - 10, 6, 12);
     ctx.fillRect(tx + tw - 11, ty + th - 10, 6, 12);
     ctx.fillRect(tx + tw/2 - 3, ty + th - 10, 6, 12);
@@ -1394,15 +1409,15 @@ function drawFurnitureItem(key, f) {
     // Simple chair
     const cx = 0, cy = 0, cw = w, ch = h;
     // Seat
-    ctx.fillStyle = '#a1887f';
+    ctx.fillStyle = vfill('#a1887f');
     ctx.fillRect(cx, cy + ch/2, cw, ch/2);
     ctx.strokeRect(cx, cy + ch/2, cw, ch/2);
     // Backrest
-    ctx.fillStyle = '#8d6e63';
+    ctx.fillStyle = vfill('#8d6e63');
     ctx.fillRect(cx + 2, cy, cw - 4, ch/2);
     ctx.strokeRect(cx + 2, cy, cw - 4, ch/2);
     // Legs
-    ctx.fillStyle = '#6d4c41';
+    ctx.fillStyle = vfill('#6d4c41');
     ctx.fillRect(cx + 2, cy + ch, 4, 6);
     ctx.fillRect(cx + cw - 6, cy + ch, 4, 6);
 
@@ -1410,7 +1425,7 @@ function drawFurnitureItem(key, f) {
     // 3D Couch with back, arms, cushions, legs
     const cx = 0, cy = 0, cw = w, ch = h;
     // Backrest (tall, behind)
-    ctx.fillStyle = '#b08d5e';
+    ctx.fillStyle = vfill('#b08d5e');
     ctx.beginPath();
     ctx.moveTo(cx + 5, cy - 15);
     ctx.lineTo(cx + cw - 5, cy - 15);
@@ -1421,18 +1436,18 @@ function drawFurnitureItem(key, f) {
     ctx.fill();
     ctx.stroke();
     // Seat base
-    ctx.fillStyle = '#c8a97e';
+    ctx.fillStyle = vfill('#c8a97e');
     ctx.fillRect(cx, cy + 10, cw, ch - 10);
     ctx.strokeRect(cx, cy + 10, cw, ch - 10);
     // Seat cushion 1
-    ctx.fillStyle = '#d4b48e';
+    ctx.fillStyle = vfill('#d4b48e');
     ctx.fillRect(cx + 5, cy + 12, cw/2 - 7, ch - 18);
     ctx.strokeRect(cx + 5, cy + 12, cw/2 - 7, ch - 18);
     // Seat cushion 2
     ctx.fillRect(cx + cw/2 + 2, cy + 12, cw/2 - 7, ch - 18);
     ctx.strokeRect(cx + cw/2 + 2, cy + 12, cw/2 - 7, ch - 18);
     // Left armrest
-    ctx.fillStyle = '#b08d5e';
+    ctx.fillStyle = vfill('#b08d5e');
     ctx.beginPath();
     ctx.moveTo(cx - 8, cy + 5);
     ctx.quadraticCurveTo(cx - 12, cy + 15, cx - 8, cy + ch - 5);
@@ -1451,7 +1466,7 @@ function drawFurnitureItem(key, f) {
     ctx.fill();
     ctx.stroke();
     // Legs
-    ctx.fillStyle = '#6d4c41';
+    ctx.fillStyle = vfill('#6d4c41');
     ctx.fillRect(cx + 2, cy + ch, 6, 8);
     ctx.fillRect(cx + cw - 8, cy + ch, 6, 8);
 
@@ -1477,18 +1492,18 @@ function drawFurnitureItem(key, f) {
     // 3D Bed with headboard, mattress, pillow, blanket
     const hx = 0, hy = 0, hw = w, hh = h;
     // Headboard (darker, behind)
-    ctx.fillStyle = '#6a9ab5';
+    ctx.fillStyle = vfill('#6a9ab5');
     ctx.fillRect(hx + 5, hy - 15, hw - 10, 20);
     ctx.strokeRect(hx + 5, hy - 15, hw - 10, 20);
     // Headboard detail
-    ctx.fillStyle = '#5a8aa5';
+    ctx.fillStyle = vfill('#5a8aa5');
     ctx.fillRect(hx + 15, hy - 10, hw - 30, 10);
     // Mattress base
-    ctx.fillStyle = '#8ab6d6';
+    ctx.fillStyle = vfill('#8ab6d6');
     ctx.fillRect(hx, hy + 5, hw, hh - 5);
     ctx.strokeRect(hx, hy + 5, hw, hh - 5);
     // Mattress top (lighter)
-    ctx.fillStyle = '#9ec6e6';
+    ctx.fillStyle = vfill('#9ec6e6');
     ctx.fillRect(hx + 3, hy + 5, hw - 6, 12);
     // Pillow
     ctx.fillStyle = '#fff';
@@ -1502,7 +1517,7 @@ function drawFurnitureItem(key, f) {
     ctx.ellipse(hx + hw/2, hy + 20, hw/2 - 18, 5, 0, 0, Math.PI*2);
     ctx.fill();
     // Blanket (lower half, draped)
-    ctx.fillStyle = '#7ab6c6';
+    ctx.fillStyle = vfill('#7ab6c6');
     ctx.beginPath();
     ctx.moveTo(hx, hy + 30);
     ctx.lineTo(hx + hw, hy + 30);
@@ -1519,7 +1534,7 @@ function drawFurnitureItem(key, f) {
     ctx.quadraticCurveTo(hx + hw/2, hy + 45, hx + hw - 10, hy + 35);
     ctx.stroke();
     // Legs
-    ctx.fillStyle = '#8d6e63';
+    ctx.fillStyle = vfill('#8d6e63');
     ctx.fillRect(hx + 5, hy + hh, 6, 8);
     ctx.fillRect(hx + hw - 11, hy + hh, 6, 8);
 
@@ -1527,13 +1542,13 @@ function drawFurnitureItem(key, f) {
     // Donut cat bed with fluffy walls
     const cx = w/2, cy = h/2, rx = w/2, ry = h/2;
     // Outer fluffy rim (darker)
-    ctx.fillStyle = '#c65a3b';
+    ctx.fillStyle = vfill('#c65a3b');
     ctx.beginPath();
     ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
     ctx.fill();
     ctx.stroke();
     // Fluffy bumps on rim
-    ctx.fillStyle = '#d66a4b';
+    ctx.fillStyle = vfill('#d66a4b');
     for (let a = 0; a < Math.PI*2; a += 0.4) {
       const bx = cx + Math.cos(a) * (rx - 2);
       const by = cy + Math.sin(a) * (ry - 2);
@@ -1542,13 +1557,13 @@ function drawFurnitureItem(key, f) {
       ctx.fill();
     }
     // Inner cushion
-    ctx.fillStyle = '#fff3e0';
+    ctx.fillStyle = vfill('#fff3e0');
     ctx.beginPath();
     ctx.ellipse(cx, cy, rx - 12, ry - 12, 0, 0, Math.PI*2);
     ctx.fill();
     ctx.stroke();
     // Cushion shading
-    ctx.fillStyle = '#ffe8d0';
+    ctx.fillStyle = vfill('#ffe8d0');
     ctx.beginPath();
     ctx.ellipse(cx + 3, cy + 3, rx - 18, ry - 18, 0, 0, Math.PI*2);
     ctx.fill();
@@ -1557,19 +1572,19 @@ function drawFurnitureItem(key, f) {
     // Realistic bowl with water
     const cx = w/2, cy = h/2;
     // Bowl outer (ceramic)
-    ctx.fillStyle = '#e0f7fa';
+    ctx.fillStyle = vfill('#e0f7fa');
     ctx.beginPath();
     ctx.ellipse(cx, cy + 6, w/2, h/2, 0, 0, Math.PI*2);
     ctx.fill();
     ctx.stroke();
     // Bowl rim
-    ctx.fillStyle = '#b2ebf2';
+    ctx.fillStyle = vfill('#b2ebf2');
     ctx.beginPath();
     ctx.ellipse(cx, cy + 2, w/2, h/2 - 4, 0, 0, Math.PI*2);
     ctx.fill();
     ctx.stroke();
     // Water surface
-    ctx.fillStyle = '#4fc3f7';
+    ctx.fillStyle = vfill('#4fc3f7');
     ctx.beginPath();
     ctx.ellipse(cx, cy, w/2 - 4, h/2 - 6, 0, 0, Math.PI*2);
     ctx.fill();
@@ -1589,19 +1604,19 @@ function drawFurnitureItem(key, f) {
     // Realistic bowl with food
     const cx = w/2, cy = h/2;
     // Bowl outer
-    ctx.fillStyle = '#f5e6d3';
+    ctx.fillStyle = vfill('#f5e6d3');
     ctx.beginPath();
     ctx.ellipse(cx, cy + 6, w/2, h/2, 0, 0, Math.PI*2);
     ctx.fill();
     ctx.stroke();
     // Bowl inner
-    ctx.fillStyle = '#e8d5c0';
+    ctx.fillStyle = vfill('#e8d5c0');
     ctx.beginPath();
     ctx.ellipse(cx, cy + 2, w/2, h/2 - 4, 0, 0, Math.PI*2);
     ctx.fill();
     ctx.stroke();
     // Food base (dry food color)
-    ctx.fillStyle = '#a0522d';
+    ctx.fillStyle = vfill('#a0522d');
     ctx.beginPath();
     ctx.ellipse(cx, cy + 2, w/2 - 5, h/2 - 7, 0, 0, Math.PI*2);
     ctx.fill();
@@ -1634,7 +1649,7 @@ function drawFurnitureItem(key, f) {
         ctx.ellipse(cx, cy + 2, w/2 - 6, h/2 - 8, 0, 0, Math.PI*2);
         ctx.fill();
         // Bone
-        ctx.fillStyle = '#f5f5dc';
+        ctx.fillStyle = vfill('#f5f5dc');
         ctx.fillRect(cx + 6, cy - 8, 4, 10);
         ctx.beginPath();
         ctx.arc(cx + 8, cy - 10, 3, 0, Math.PI*2);
@@ -1669,7 +1684,7 @@ function drawFurnitureItem(key, f) {
         drawStar(cx - 6, cy + 2, w/5);
       } else if (foodInBowl.type === 'sushi') {
         // Sushi rolls
-        ctx.fillStyle = '#2f2f2f';
+        ctx.fillStyle = vfill('#2f2f2f');
         ctx.beginPath();
         ctx.roundRect(cx - 8, cy - 4, 8, 8, 2);
         ctx.fill();
@@ -1677,7 +1692,7 @@ function drawFurnitureItem(key, f) {
         ctx.roundRect(cx + 2, cy - 4, 8, 8, 2);
         ctx.fill();
         // Rice
-        ctx.fillStyle = '#fff8dc';
+        ctx.fillStyle = vfill('#fff8dc');
         ctx.beginPath();
         ctx.roundRect(cx - 6, cy - 2, 4, 4, 1);
         ctx.fill();
@@ -1685,7 +1700,7 @@ function drawFurnitureItem(key, f) {
         ctx.roundRect(cx + 4, cy - 2, 4, 4, 1);
         ctx.fill();
         // Topping
-        ctx.fillStyle = '#ff69b4';
+        ctx.fillStyle = vfill('#ff69b4');
         ctx.fillRect(cx - 6, cy - 4, 4, 2);
         ctx.fillRect(cx + 4, cy - 4, 4, 2);
       } else {
@@ -1700,18 +1715,18 @@ function drawFurnitureItem(key, f) {
           const fx = cx + Math.cos(angle) * (w/4 - 2);
           const fy = cy - 2 + Math.sin(angle) * (h/4 - 2);
           ctx.beginPath();
-          ctx.arc(fx, fy, 2 + Math.random(), 0, Math.PI*2);
+          ctx.arc(fx, fy, 2 + (i % 3) * 0.5, 0, Math.PI*2);
           ctx.fill();
         }
       }
     } else {
       // Default dry food visible
-      ctx.fillStyle = '#cd853f';
+      ctx.fillStyle = vfill('#cd853f');
       ctx.beginPath();
       ctx.ellipse(cx, cy, w/2 - 6, h/2 - 8, 0, 0, Math.PI*2);
       ctx.fill();
       // Pellets
-      ctx.fillStyle = '#b87333';
+      ctx.fillStyle = vfill('#b87333');
       for (let i = 0; i < 4; i++) {
         const angle = (i / 4) * Math.PI * 2 + 0.3;
         ctx.beginPath();
@@ -1727,11 +1742,11 @@ function drawFurnitureItem(key, f) {
     ctx.fillStyle = 'rgba(0,0,0,0.1)';
     ctx.fillRect(sx + 3, sy + sh + 2, sw, 4);
     // Back wall (tall)
-    ctx.fillStyle = '#d4a373';
+    ctx.fillStyle = vfill('#d4a373');
     ctx.fillRect(sx + 5, sy - 8, sw - 10, 12);
     ctx.strokeRect(sx + 5, sy - 8, sw - 10, 12);
     // Left wall
-    ctx.fillStyle = '#c49365';
+    ctx.fillStyle = vfill('#c49365');
     ctx.beginPath();
     ctx.moveTo(sx, sy + 4);
     ctx.lineTo(sx + 5, sy - 8);
@@ -1750,38 +1765,38 @@ function drawFurnitureItem(key, f) {
     ctx.fill();
     ctx.stroke();
     // Front wall (lower for cat entry)
-    ctx.fillStyle = '#d4a373';
+    ctx.fillStyle = vfill('#d4a373');
     ctx.fillRect(sx, sy + sh - 12, sw, 12);
     ctx.strokeRect(sx, sy + sh - 12, sw, 12);
     // Litter inside
-    ctx.fillStyle = '#e9c46a';
+    ctx.fillStyle = vfill('#e9c46a');
     ctx.fillRect(sx + 6, sy + 2, sw - 12, sh - 14);
-    // Litter granules texture
+    // Litter granules texture (deterministic — stable, no per-frame flicker)
     ctx.fillStyle = '#f0d080';
     for (let i = 0; i < 15; i++) {
-      const lx = sx + 10 + Math.random() * (sw - 20);
-      const ly = sy + 5 + Math.random() * (sh - 20);
+      const lx = sx + 10 + ((i * 37 + 11) % (sw - 22));
+      const ly = sy + 5 + ((i * 53 + 7) % (sh - 22));
       ctx.fillRect(lx, ly, 2, 2);
     }
     ctx.fillStyle = '#d4a350';
     for (let i = 0; i < 10; i++) {
-      const lx = sx + 10 + Math.random() * (sw - 20);
-      const ly = sy + 5 + Math.random() * (sh - 20);
+      const lx = sx + 10 + ((i * 61 + 23) % (sw - 22));
+      const ly = sy + 5 + ((i * 41 + 17) % (sh - 22));
       ctx.fillRect(lx, ly, 2, 2);
     }
     // Scoop hint on front
-    ctx.fillStyle = '#b08d5e';
+    ctx.fillStyle = vfill('#b08d5e');
     ctx.fillRect(sx + sw/2 - 8, sy + sh - 8, 16, 4);
 
   } else if (key === 'cat_tree') {
     // Cat tree with trunk, platforms, and dangling toy
     const tx = 0, ty = 0, tw = w, th = h;
     // Base
-    ctx.fillStyle = '#6d4c41';
+    ctx.fillStyle = vfill('#6d4c41');
     ctx.fillRect(tx - 5, ty + th - 12, tw + 10, 12);
     ctx.strokeRect(tx - 5, ty + th - 12, tw + 10, 12);
     // Trunk (textured)
-    ctx.fillStyle = '#8d6e63';
+    ctx.fillStyle = vfill('#8d6e63');
     ctx.fillRect(tx + tw/2 - 10, ty + 20, 20, th - 32);
     ctx.strokeRect(tx + tw/2 - 10, ty + 20, 20, th - 32);
     // Trunk rope texture lines
@@ -1794,7 +1809,7 @@ function drawFurnitureItem(key, f) {
       ctx.stroke();
     }
     // Platform 1 (lower)
-    ctx.fillStyle = '#a8d5a2';
+    ctx.fillStyle = vfill('#a8d5a2');
     ctx.fillRect(tx - 5, ty + th/2 - 5, tw + 10, 10);
     ctx.strokeRect(tx - 5, ty + th/2 - 5, tw + 10, 10);
     // Platform 2 (upper)
@@ -1808,12 +1823,13 @@ function drawFurnitureItem(key, f) {
     ctx.moveTo(tx + tw/2, ty + th/2);
     ctx.lineTo(tx + tw/2, toyY);
     ctx.stroke();
-    ctx.fillStyle = '#e76f51';
+    ctx.fillStyle = vfill('#e76f51');
     ctx.beginPath();
     ctx.arc(tx + tw/2, toyY + 5, 4, 0, Math.PI*2);
     ctx.fill();
-    // Top perch
-    ctx.fillStyle = '#a8d5a2';
+    // Top perch (reset stroke — the toy string left an orange strokeStyle)
+    ctx.strokeStyle = '#7fae79';
+    ctx.fillStyle = vfill('#a8d5a2');
     ctx.beginPath();
     ctx.ellipse(tx + tw/2, ty + 10, tw/2 + 5, 8, 0, 0, Math.PI*2);
     ctx.fill();
@@ -1823,7 +1839,7 @@ function drawFurnitureItem(key, f) {
     // Chaise lounger
     const lx = 0, ly = 0, lw = w, lh = h;
     // Backrest (angled)
-    ctx.fillStyle = '#e08d4f';
+    ctx.fillStyle = vfill('#e08d4f');
     ctx.beginPath();
     ctx.moveTo(lx + 5, ly + lh/2);
     ctx.lineTo(lx + lw - 5, ly + lh/2);
@@ -1833,15 +1849,15 @@ function drawFurnitureItem(key, f) {
     ctx.fill();
     ctx.stroke();
     // Seat
-    ctx.fillStyle = '#f4a261';
+    ctx.fillStyle = vfill('#f4a261');
     ctx.fillRect(lx, ly + lh/2 - 5, lw, lh/2 + 5);
     ctx.strokeRect(lx, ly + lh/2 - 5, lw, lh/2 + 5);
     // Cushion
-    ctx.fillStyle = '#f5b07a';
+    ctx.fillStyle = vfill('#f5b07a');
     ctx.fillRect(lx + 5, ly + lh/2, lw - 10, lh/2 - 8);
     ctx.strokeRect(lx + 5, ly + lh/2, lw - 10, lh/2 - 8);
     // Legs
-    ctx.fillStyle = '#6d4c41';
+    ctx.fillStyle = vfill('#6d4c41');
     ctx.fillRect(lx + 5, ly + lh, 5, 6);
     ctx.fillRect(lx + lw - 10, ly + lh, 5, 6);
 
@@ -1849,13 +1865,13 @@ function drawFurnitureItem(key, f) {
     // Detailed mouse with ears, tail, eyes
     const mx = w/2, my = h/2;
     // Body
-    ctx.fillStyle = '#adb5bd';
+    ctx.fillStyle = vfill('#adb5bd');
     ctx.beginPath();
     ctx.ellipse(mx, my, w/2, h/2, 0, 0, Math.PI*2);
     ctx.fill();
     ctx.stroke();
     // Ears
-    ctx.fillStyle = '#949da6';
+    ctx.fillStyle = vfill('#949da6');
     ctx.beginPath();
     ctx.arc(mx - w/3, my - h/2 + 2, 5, 0, Math.PI*2);
     ctx.fill();
@@ -1864,7 +1880,7 @@ function drawFurnitureItem(key, f) {
     ctx.arc(mx + w/3, my - h/2 + 2, 5, 0, Math.PI*2);
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = '#ffcdd2';
+    ctx.fillStyle = vfill('#ffcdd2');
     ctx.beginPath();
     ctx.arc(mx - w/3, my - h/2 + 2, 3, 0, Math.PI*2);
     ctx.fill();
@@ -1884,7 +1900,7 @@ function drawFurnitureItem(key, f) {
     ctx.arc(mx - 3, my - 2, 2, 0, Math.PI*2);
     ctx.fill();
     // Nose
-    ctx.fillStyle = '#ffcdd2';
+    ctx.fillStyle = vfill('#ffcdd2');
     ctx.beginPath();
     ctx.arc(mx - w/2 + 2, my, 2, 0, Math.PI*2);
     ctx.fill();
@@ -1893,27 +1909,32 @@ function drawFurnitureItem(key, f) {
     // Cylindrical scratching post with rope texture
     const sx = 0, sy = 0, sw = w, sh = h;
     // Base
-    ctx.fillStyle = '#6d4c41';
+    ctx.fillStyle = vfill('#6d4c41');
     ctx.fillRect(sx - 10, sy + sh - 10, sw + 20, 10);
     ctx.strokeRect(sx - 10, sy + sh - 10, sw + 20, 10);
     // Post cylinder
-    ctx.fillStyle = '#c4a47c';
+    ctx.fillStyle = vfill('#c4a47c');
     ctx.fillRect(sx + 5, sy + 5, sw - 10, sh - 15);
     ctx.strokeRect(sx + 5, sy + 5, sw - 10, sh - 15);
-    // Rope texture (diagonal lines)
+    // Rope texture (diagonal wrap, clipped to the post body)
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(sx + 5, sy + 5, sw - 10, sh - 15);
+    ctx.clip();
     ctx.strokeStyle = '#b08d5e';
     ctx.lineWidth = 1;
-    for (let i = -3; i < 8; i++) {
+    for (let y = sy + 12; y < sy + sh - 12; y += 9) {
       ctx.beginPath();
-      ctx.moveTo(sx + 5, sy + 10 + i * 10);
-      ctx.lineTo(sx + sw - 5, sy + 20 + i * 10);
+      ctx.moveTo(sx + 5, y);
+      ctx.lineTo(sx + sw - 5, y + 7);
       ctx.stroke();
     }
+    ctx.restore();
     // Top cap
-    ctx.fillStyle = '#8d6e63';
+    ctx.fillStyle = vfill('#8d6e63');
     ctx.fillRect(sx, sy, sw, 10);
     ctx.strokeRect(sx, sy, sw, 10);
-    ctx.fillStyle = '#a1887f';
+    ctx.fillStyle = vfill('#a1887f');
     ctx.fillRect(sx + 3, sy + 2, sw - 6, 4);
 
   } else {
@@ -2162,6 +2183,17 @@ function shadeColor(color, percent) {
   const G = Math.max(0, Math.min(255, ((num >> 8) & 0x00FF) + amt));
   const B = Math.max(0, Math.min(255, (num & 0x0000FF) + amt));
   return '#' + (0x1000000 + R*0x10000 + G*0x100 + B).toString(16).slice(1);
+}
+
+// Furniture lighting: vertical gradient (light top -> dark bottom) so pieces share one light source.
+// _vfH is set by drawFurnitureItem to the current item height (gradient spans the piece + trim above).
+let _vfH = 60;
+function vfill(color, y0, y1) {
+  const g = ctx.createLinearGradient(0, y0 === undefined ? -20 : y0, 0, y1 === undefined ? _vfH + 20 : y1);
+  g.addColorStop(0, shadeColor(color, 10));
+  g.addColorStop(0.55, color);
+  g.addColorStop(1, shadeColor(color, -12));
+  return g;
 }
 
 function drawBreedEars(ctx, type, fur, bounce, xOff, yOff) {
