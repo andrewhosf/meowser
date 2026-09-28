@@ -543,12 +543,14 @@ input[type="color"] {
 
 #cd-log {
   flex: 1;
-  max-height: 80px;
+  min-height: 44px;
+  max-height: 110px;
   overflow-y: auto;
   background: #faf6ec;
   border-radius: 8px;
-  padding: 8px;
+  padding: 8px 10px;
   font-size: 0.85rem;
+  line-height: 1.45;
 }
 
 #cd-input {
