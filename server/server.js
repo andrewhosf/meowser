@@ -21,9 +21,11 @@ const JWT_SECRET = process.env.JWT_SECRET || 'meowser-secret-key-change-me';
 const PORT = process.env.PORT || 3000;
 
 // ===== DATABASE SETUP =====
+// Local dev (docker/localhost postgres) has no SSL; Render's managed PG requires it.
+const useSsl = !/localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL || '')
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: useSsl ? { rejectUnauthorized: false } : false
 });
 
 // Helper to convert ? placeholders to $1, $2, ...
@@ -140,6 +142,8 @@ async function initDb() {
   await addColumnIfNotExists('cats', 'game_hour', 'INTEGER DEFAULT 6');
   await addColumnIfNotExists('cats', 'last_mess_time', 'INTEGER DEFAULT 0');
   await addColumnIfNotExists('cats', 'morning_bonus_claimed', 'INTEGER DEFAULT 0');
+  await addColumnIfNotExists('cats', 'patch_color', "TEXT DEFAULT '#e67e22'");
+  await addColumnIfNotExists('cats', 'dark_color', "TEXT DEFAULT '#3a3f4a'");
 }
 
 initDb().catch(err => {
@@ -394,13 +398,15 @@ app.get('/api/cat', authMiddleware, async (req, res) => {
 
 app.post('/api/cat', authMiddleware, async (req, res) => {
   const { name, type, fur_color, eye_color } = req.body;
+  const patch_color = req.body.patch_color || '#e67e22';
+  const dark_color = req.body.dark_color || '#3a3f4a';
   const existing = await get('SELECT id FROM cats WHERE user_id = ?', req.user.userId);
   if (existing) return res.status(400).json({ error: 'You already have a cat' });
 
   const now = getNow();
   const result = await run(
-    'INSERT INTO cats (user_id, name, type, fur_color, eye_color, last_fed, last_petted, last_played, last_ubi_claim, last_game_tick, game_minutes, game_day, last_ubi_game_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
-    req.user.userId, name, type, fur_color, eye_color, now, now, now, now, now, 0, 1, 0
+    'INSERT INTO cats (user_id, name, type, fur_color, eye_color, patch_color, dark_color, last_fed, last_petted, last_played, last_ubi_claim, last_game_tick, game_minutes, game_day, last_ubi_game_day) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
+    req.user.userId, name, type, fur_color, eye_color, patch_color, dark_color, now, now, now, now, now, 0, 1, 0
   );
 
   const cat = await get('SELECT * FROM cats WHERE id = ?', result.rows[0].id);

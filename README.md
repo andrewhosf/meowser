@@ -26,7 +26,7 @@ A web-based cat raising game where you adopt a cat, take care of it, earn Meowco
 
 ## Game Features
 
-- **7 cat types**: Tabby, Siamese, Maine Coon, Persian, Sphynx, Scottish Fold, Calico
+- **7 cat breeds**: Tabby, Siamese, Maine Coon, Persian, Sphynx, Scottish Fold, Calico
 - **Customize**: Pick fur color and eye color
 - **Care**: Feed, pet, play, and talk to your cat
 - **Food**: Dry food, wet food, A5 Wagyu, and... roadkill

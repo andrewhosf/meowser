@@ -180,18 +180,34 @@ const CAT_BREEDS = [
 
 let selectedBreed = 'Tabby';
 
+function getCalicoColors() {
+  return {
+    patch: document.getElementById('patch-color') ? document.getElementById('patch-color').value : '#e67e22',
+    dark: document.getElementById('dark-color') ? document.getElementById('dark-color').value : '#3a3f4a'
+  };
+}
+
+function setCalicoVisible(show) {
+  for (const id of ['patch-label', 'patch-color', 'dark-label', 'dark-color']) {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('hidden', !show);
+  }
+}
+
 function buildBreedGrid() {
   const grid = document.getElementById('cat-type-grid');
   if (!grid) return;
   grid.innerHTML = '';
+  const cc = getCalicoColors();
   for (const breed of CAT_BREEDS) {
     const card = document.createElement('div');
     card.className = 'breed-card' + (breed.value === selectedBreed ? ' selected' : '');
     card.innerHTML = `<canvas width="80" height="60"></canvas><div class="breed-name">${breed.label}</div><div class="breed-desc">${breed.desc}</div>`;
     const cvs = card.querySelector('canvas');
-    drawPreviewCat(cvs.getContext('2d'), 40, 35, breed.value, document.getElementById('fur-color').value, document.getElementById('eye-color').value, 0.5);
+    drawPreviewCat(cvs.getContext('2d'), 40, 35, breed.value, document.getElementById('fur-color').value, document.getElementById('eye-color').value, 0.5, cc.patch, cc.dark);
     card.onclick = () => {
       selectedBreed = breed.value;
+      setCalicoVisible(selectedBreed === 'Calico');
       buildBreedGrid();
       updatePreview();
     };
@@ -204,23 +220,108 @@ function updatePreview() {
   if (!cvs) return;
   const fur = document.getElementById('fur-color').value;
   const eye = document.getElementById('eye-color').value;
+  const cc = getCalicoColors();
   const pctx = cvs.getContext('2d');
   pctx.clearRect(0, 0, 200, 150);
-  drawPreviewCat(pctx, 100, 75, selectedBreed, fur, eye, 1.2);
+  drawPreviewCat(pctx, 100, 75, selectedBreed, fur, eye, 1.2, cc.patch, cc.dark);
 }
 
-function drawPreviewCat(pctx, x, y, type, fur, eye, scale) {
+// ===== PREVIEW COLOR/SHAPE HELPERS =====
+function mixColor(c1, c2, t) {
+  const n1 = parseInt(c1.replace('#',''), 16), n2 = parseInt(c2.replace('#',''), 16);
+  const ch = (n, s) => (n >> s) & 0xFF;
+  const m = ch(n1,16)*(1-t) + ch(n2,16)*t;
+  const g = ch(n1,8)*(1-t) + ch(n2,8)*t;
+  const b = ch(n1,0)*(1-t) + ch(n2,0)*t;
+  return '#' + (0x1000000 + Math.round(m)*0x10000 + Math.round(g)*0x100 + Math.round(b)).toString(16).slice(1);
+}
+
+// Fuzzy silhouette: short fur spikes around an ellipse
+function pvFluff(pctx, cx, cy, rx, ry, color, n, len) {
+  pctx.strokeStyle = color;
+  pctx.lineWidth = 2;
+  pctx.lineCap = 'round';
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    pctx.beginPath();
+    pctx.moveTo(cx + Math.cos(a) * rx, cy + Math.sin(a) * ry);
+    pctx.lineTo(cx + Math.cos(a) * (rx + len), cy + Math.sin(a) * (ry + len));
+    pctx.stroke();
+  }
+}
+
+function drawPreviewCat(pctx, x, y, type, fur, eye, scale, patch, darkPatch) {
+  if (!patch) patch = '#e67e22';
+  if (!darkPatch) darkPatch = '#3a3f4a';
   pctx.save();
   pctx.translate(x, y);
   pctx.scale(scale, scale);
   const bScale = type === 'Maine Coon' ? 1.15 : (type === 'Persian' ? 1.05 : 1.0);
   pctx.scale(bScale, bScale);
 
-  // Body
-  pctx.fillStyle = fur;
+  // ----- Per-breed geometry -----
+  const dark = shadeColor(fur, -40);          // Siamese points
+  const skin = type === 'Sphynx' ? mixColor(fur, '#c98d7f', 0.55) : fur;
+  let body = skin;
+  let bodyRX = 25, bodyRY = 18;
+  let headR = 18, headX = 12, headY = -12, headRY = 18;
+  if (type === 'Siamese')       { bodyRX = 22; bodyRY = 15; headR = 15; headRY = 15; }
+  if (type === 'Maine Coon')    { bodyRX = 28; bodyRY = 20; headR = 19; headRY = 19; }
+  if (type === 'Persian')       { bodyRX = 28; bodyRY = 19; headR = 19; headRY = 17; }
+  if (type === 'Sphynx')        { bodyRX = 22; bodyRY = 15; headR = 16; headRY = 16; }
+  if (type === 'Scottish Fold') { bodyRX = 24; bodyRY = 17; headR = 17; headRY = 16; headY = -17; }
+  const white = '#f7f2ea';                    // Calico base
+  if (type === 'Calico')        { body = white; }
+
+  // ----- Tail (breed-shaped) -----
+  pctx.lineCap = 'round';
+  if (type === 'Maine Coon') {
+    pctx.strokeStyle = fur; pctx.lineWidth = 10;
+    pctx.beginPath(); pctx.moveTo(-20, 8); pctx.quadraticCurveTo(-44, -8, -46, -34); pctx.stroke();
+    pvFluff(pctx, -44, -22, 7, 16, shadeColor(fur, -12), 10, 5);
+  } else if (type === 'Persian') {
+    pctx.strokeStyle = fur; pctx.lineWidth = 9;
+    pctx.beginPath(); pctx.moveTo(-20, 8); pctx.quadraticCurveTo(-40, -4, -40, -26); pctx.stroke();
+    pvFluff(pctx, -40, -26, 6, 6, shadeColor(fur, -12), 10, 5);
+  } else if (type === 'Siamese') {
+    pctx.strokeStyle = fur; pctx.lineWidth = 3.5;
+    pctx.beginPath(); pctx.moveTo(-20, 8); pctx.quadraticCurveTo(-42, -6, -48, -30); pctx.stroke();
+    pctx.fillStyle = dark;                       // pointed tail tip
+    pctx.beginPath(); pctx.arc(-48, -30, 3, 0, Math.PI * 2); pctx.fill();
+  } else if (type === 'Sphynx') {
+    pctx.strokeStyle = skin; pctx.lineWidth = 3;
+    pctx.beginPath(); pctx.moveTo(-20, 8); pctx.quadraticCurveTo(-40, 4, -46, -14); pctx.stroke();
+  } else if (type === 'Scottish Fold') {
+    pctx.strokeStyle = fur; pctx.lineWidth = 7;
+    pctx.beginPath(); pctx.moveTo(-20, 8); pctx.quadraticCurveTo(-36, 2, -36, -12); pctx.stroke();
+  } else if (type === 'Tabby') {
+    pctx.strokeStyle = fur; pctx.lineWidth = 5;
+    pctx.beginPath(); pctx.moveTo(-20, 8); pctx.quadraticCurveTo(-40, -4, -40, -22); pctx.stroke();
+    pctx.strokeStyle = shadeColor(fur, -25); pctx.lineWidth = 2;
+    const P0 = [-20, 8], C = [-40, -4], P1 = [-40, -22];   // rings ON the tail curve
+    for (let i = 0; i < 3; i++) {
+      const t = 0.5 + i * 0.18, u = 1 - t;
+      const qx = u*u*P0[0] + 2*u*t*C[0] + t*t*P1[0];
+      const qy = u*u*P0[1] + 2*u*t*C[1] + t*t*P1[1];
+      pctx.beginPath(); pctx.moveTo(qx - 2.5, qy); pctx.lineTo(qx + 2.5, qy - 1.5); pctx.stroke();
+    }
+  } else if (type === 'Calico') {
+    pctx.strokeStyle = fur; pctx.lineWidth = 5;           // fur-colored base so the tail reads
+    pctx.beginPath(); pctx.moveTo(-20, 8); pctx.quadraticCurveTo(-40, -4, -40, -22); pctx.stroke();
+    pctx.strokeStyle = patch;                             // patch-colored tip drawn ALONG the curve (t 0.6→1)
+    pctx.beginPath(); pctx.moveTo(-36.8, -8.6); pctx.quadraticCurveTo(-40, -14.8, -40, -22); pctx.stroke();
+  }
+
+  // ----- Body (+ fluffy silhouette) -----
+  if (type === 'Maine Coon' || type === 'Persian') {
+    pvFluff(pctx, 0, 5, bodyRX, bodyRY, shadeColor(fur, -14), 18, 5);
+  }
+  pctx.fillStyle = body;
   pctx.beginPath();
-  pctx.ellipse(0, 5, 25, 18, 0, 0, Math.PI * 2);
+  pctx.ellipse(0, 5, bodyRX, bodyRY, 0, 0, Math.PI * 2);
   pctx.fill();
+
+  // Body patterns
   if (type === 'Tabby') {
     pctx.strokeStyle = shadeColor(fur, -25);
     pctx.lineWidth = 1.5;
@@ -232,101 +333,190 @@ function drawPreviewCat(pctx, x, y, type, fur, eye, scale) {
     }
   }
   if (type === 'Calico') {
-    const patches = ['#e67e22', '#2c3e50', '#ecf0f1'];
+    const patches = [fur, patch, darkPatch];
+    const spots = [[-10, 0, 8, 7], [6, 10, 7, 5], [-2, -6, 5, 4]];
     for (let i = 0; i < 3; i++) {
       pctx.fillStyle = patches[i];
       pctx.beginPath();
-      pctx.ellipse(-8 + i * 10, 2 + (i % 2) * 6, 5, 4, 0, 0, Math.PI * 2);
+      pctx.ellipse(spots[i][0], spots[i][1], spots[i][2], spots[i][3], 0, 0, Math.PI * 2);
       pctx.fill();
     }
   }
   if (type === 'Sphynx') {
-    pctx.strokeStyle = 'rgba(200,150,150,0.3)';
+    pctx.strokeStyle = 'rgba(120,70,60,0.4)';
     pctx.lineWidth = 1;
-    pctx.beginPath(); pctx.moveTo(-10, 0); pctx.lineTo(5, -3); pctx.stroke();
-    pctx.beginPath(); pctx.moveTo(-5, 8); pctx.lineTo(8, 5); pctx.stroke();
+    pctx.beginPath(); pctx.moveTo(-10, 0); pctx.quadraticCurveTo(-2, -3, 5, -1); pctx.stroke();
+    pctx.beginPath(); pctx.moveTo(-6, 8); pctx.quadraticCurveTo(2, 5, 9, 7); pctx.stroke();
+    pctx.beginPath(); pctx.moveTo(-1, 14); pctx.quadraticCurveTo(4, 12, 8, 14); pctx.stroke();
+  }
+  if (type === 'Siamese') {
+    // sleek lighter belly line
+    pctx.strokeStyle = shadeColor(fur, 12);
+    pctx.lineWidth = 2;
+    pctx.beginPath(); pctx.moveTo(-12, 14); pctx.quadraticCurveTo(0, 18, 10, 14); pctx.stroke();
   }
 
-  // Head
-  pctx.fillStyle = fur;
-  if (type === 'Persian') {
-    pctx.beginPath();
-    pctx.ellipse(12, -12, 20, 16, 0, 0, Math.PI * 2);
-    pctx.fill();
-  } else {
-    pctx.beginPath();
-    pctx.arc(12, -12, 18, 0, Math.PI * 2);
-    pctx.fill();
+  // ----- Legs / paws (Siamese points) -----
+  if (type === 'Siamese') {
+    pctx.fillStyle = dark;
+    pctx.beginPath(); pctx.ellipse(-12, 20, 5, 3.5, 0, 0, Math.PI * 2); pctx.fill();
+    pctx.beginPath(); pctx.ellipse(8, 20, 5, 3.5, 0, 0, Math.PI * 2); pctx.fill();
   }
 
-  // Ears
+  // ----- Head (+ fluffy ruff) -----
+  if (type === 'Maine Coon' || type === 'Persian') {
+    pvFluff(pctx, headX, headY, headR + 1, headRY + 1, shadeColor(fur, -14), 16, 5);
+  }
+  pctx.fillStyle = (type === 'Calico') ? white : skin;
+  pctx.beginPath();
+  pctx.ellipse(headX, headY, headR, headRY, 0, 0, Math.PI * 2);
+  pctx.fill();
+  if (type === 'Calico') {                       // half-and-half face
+    pctx.save();
+    pctx.beginPath(); pctx.rect(headX - headR - 2, headY - headRY - 2, headR + 2, headRY * 2 + 4); pctx.clip();
+    pctx.fillStyle = patch;
+    pctx.beginPath(); pctx.ellipse(headX, headY, headR, headRY, 0, 0, Math.PI * 2); pctx.fill();
+    pctx.restore();
+    // dark patch over the other ear/eye region
+    pctx.save();
+    pctx.beginPath(); pctx.rect(headX, headY - headRY - 2, headR + 2, headRY + 4); pctx.clip();
+    pctx.fillStyle = darkPatch;
+    pctx.beginPath(); pctx.ellipse(headX + 4, headY - 10, 9, 7, 0, 0, Math.PI * 2); pctx.fill();
+    pctx.restore();
+  }
+  if (type === 'Siamese') {                      // dark face mask (full points look)
+    pctx.fillStyle = dark;
+    pctx.beginPath(); pctx.ellipse(headX, headY + 4, 10.5, 9, 0, 0, Math.PI * 2); pctx.fill();
+  }
+  if (type === 'Tabby') {                        // forehead "M"
+    pctx.strokeStyle = shadeColor(fur, -30);
+    pctx.lineWidth = 1.5;
+    pctx.beginPath();
+    pctx.moveTo(headX - 6, headY - 10); pctx.lineTo(headX - 3, headY - 14);
+    pctx.lineTo(headX, headY - 10); pctx.lineTo(headX + 3, headY - 14);
+    pctx.lineTo(headX + 6, headY - 10);
+    pctx.stroke();
+  }
+
+  // ----- Ears (breed-shaped, positioned off head geometry) -----
+  const eL = headX - headR * 0.72, eR = headX + headR * 0.72, eT = headY - headRY * 0.82;
+  pctx.fillStyle = (type === 'Calico') ? '#e67e22' : skin;
+  const inner = (type === 'Calico') ? mixColor('#e67e22', '#ffccbc', 0.5) : '#ffccbc';
   if (type === 'Scottish Fold') {
-    pctx.fillStyle = fur;
-    pctx.beginPath(); pctx.ellipse(-2, -24, 7, 5, 0.3, 0, Math.PI * 2); pctx.fill();
-    pctx.beginPath(); pctx.ellipse(22, -24, 7, 5, -0.3, 0, Math.PI * 2); pctx.fill();
-    pctx.fillStyle = '#ffccbc';
-    pctx.beginPath(); pctx.ellipse(-2, -24, 4, 3, 0.3, 0, Math.PI * 2); pctx.fill();
-    pctx.beginPath(); pctx.ellipse(22, -24, 4, 3, -0.3, 0, Math.PI * 2); pctx.fill();
+    // Small ears folded forward over the skull
+    pctx.beginPath(); pctx.ellipse(eL, eT + 2, 7, 4.5, -0.5, 0, Math.PI * 2); pctx.fill();
+    pctx.beginPath(); pctx.ellipse(eR, eT + 2, 7, 4.5, 0.5, 0, Math.PI * 2); pctx.fill();
+    pctx.fillStyle = inner;
+    pctx.beginPath(); pctx.ellipse(eL + 1, eT + 3, 4, 2.5, -0.5, 0, Math.PI * 2); pctx.fill();
+    pctx.beginPath(); pctx.ellipse(eR - 1, eT + 3, 4, 2.5, 0.5, 0, Math.PI * 2); pctx.fill();
   } else if (type === 'Sphynx') {
-    pctx.fillStyle = fur;
-    pctx.beginPath(); pctx.moveTo(-4, -22); pctx.lineTo(-16, -42); pctx.lineTo(4, -26); pctx.fill();
-    pctx.beginPath(); pctx.moveTo(24, -22); pctx.lineTo(36, -42); pctx.lineTo(16, -26); pctx.fill();
-    pctx.fillStyle = '#ffccbc';
-    pctx.beginPath(); pctx.moveTo(-2, -24); pctx.lineTo(-12, -38); pctx.lineTo(4, -28); pctx.fill();
-    pctx.beginPath(); pctx.moveTo(22, -24); pctx.lineTo(32, -38); pctx.lineTo(16, -28); pctx.fill();
+    // Huge bat ears
+    pctx.beginPath(); pctx.moveTo(eL - 4, eT + 6); pctx.lineTo(eL - 16, eT - 22); pctx.lineTo(eL + 8, eT - 2); pctx.fill();
+    pctx.beginPath(); pctx.moveTo(eR + 4, eT + 6); pctx.lineTo(eR + 16, eT - 22); pctx.lineTo(eR - 8, eT - 2); pctx.fill();
+    pctx.fillStyle = inner;
+    pctx.beginPath(); pctx.moveTo(eL - 2, eT + 3); pctx.lineTo(eL - 11, eT - 16); pctx.lineTo(eL + 5, eT - 2); pctx.fill();
+    pctx.beginPath(); pctx.moveTo(eR + 2, eT + 3); pctx.lineTo(eR + 11, eT - 16); pctx.lineTo(eR - 5, eT - 2); pctx.fill();
   } else if (type === 'Maine Coon') {
-    pctx.fillStyle = fur;
-    pctx.beginPath(); pctx.moveTo(-2, -22); pctx.lineTo(-12, -50); pctx.lineTo(6, -28); pctx.fill();
-    pctx.beginPath(); pctx.moveTo(20, -22); pctx.lineTo(30, -50); pctx.lineTo(30, -28); pctx.fill();
-    pctx.strokeStyle = fur; pctx.lineWidth = 2;
-    pctx.beginPath(); pctx.moveTo(-12, -50); pctx.lineTo(-16, -56); pctx.stroke();
-    pctx.beginPath(); pctx.moveTo(30, -50); pctx.lineTo(34, -56); pctx.stroke();
-    pctx.fillStyle = '#ffccbc';
-    pctx.beginPath(); pctx.moveTo(0, -26); pctx.lineTo(-8, -42); pctx.lineTo(4, -32); pctx.fill();
-    pctx.beginPath(); pctx.moveTo(20, -26); pctx.lineTo(26, -42); pctx.lineTo(26, -30); pctx.fill();
+    // Tall tufted ears
+    pctx.beginPath(); pctx.moveTo(eL - 3, eT + 4); pctx.lineTo(eL - 6, eT - 20); pctx.lineTo(eL + 9, eT - 2); pctx.fill();
+    pctx.beginPath(); pctx.moveTo(eR + 3, eT + 4); pctx.lineTo(eR + 6, eT - 20); pctx.lineTo(eR - 9, eT - 2); pctx.fill();
+    pctx.strokeStyle = shadeColor(fur, -20); pctx.lineWidth = 1.5;
+    pctx.beginPath(); pctx.moveTo(eL - 6, eT - 20); pctx.lineTo(eL - 9, eT - 27); pctx.stroke();
+    pctx.beginPath(); pctx.moveTo(eR + 6, eT - 20); pctx.lineTo(eR + 9, eT - 27); pctx.stroke();
+    pctx.fillStyle = inner;
+    pctx.beginPath(); pctx.moveTo(eL - 1, eT + 1); pctx.lineTo(eL - 4, eT - 14); pctx.lineTo(eL + 6, eT - 2); pctx.fill();
+    pctx.beginPath(); pctx.moveTo(eR + 1, eT + 1); pctx.lineTo(eR + 4, eT - 14); pctx.lineTo(eR - 6, eT - 2); pctx.fill();
   } else if (type === 'Persian') {
-    pctx.fillStyle = fur;
-    pctx.beginPath(); pctx.ellipse(-2, -28, 5, 4, -0.2, 0, Math.PI * 2); pctx.fill();
-    pctx.beginPath(); pctx.ellipse(22, -28, 5, 4, 0.2, 0, Math.PI * 2); pctx.fill();
-    pctx.fillStyle = '#ffccbc';
-    pctx.beginPath(); pctx.ellipse(-2, -28, 3, 2, -0.2, 0, Math.PI * 2); pctx.fill();
-    pctx.beginPath(); pctx.ellipse(22, -28, 3, 2, 0.2, 0, Math.PI * 2); pctx.fill();
+    // Tiny round ears, wide set
+    pctx.beginPath(); pctx.ellipse(eL, eT + 2, 5.5, 4.5, -0.25, 0, Math.PI * 2); pctx.fill();
+    pctx.beginPath(); pctx.ellipse(eR, eT + 2, 5.5, 4.5, 0.25, 0, Math.PI * 2); pctx.fill();
+    pctx.fillStyle = inner;
+    pctx.beginPath(); pctx.ellipse(eL, eT + 2, 3, 2.2, -0.25, 0, Math.PI * 2); pctx.fill();
+    pctx.beginPath(); pctx.ellipse(eR, eT + 2, 3, 2.2, 0.25, 0, Math.PI * 2); pctx.fill();
+  } else if (type === 'Siamese') {
+    // Large, wide-based ears
+    pctx.beginPath(); pctx.moveTo(eL - 5, eT + 6); pctx.lineTo(eL - 7, eT - 16); pctx.lineTo(eL + 8, eT); pctx.fill();
+    pctx.beginPath(); pctx.moveTo(eR + 5, eT + 6); pctx.lineTo(eR + 7, eT - 16); pctx.lineTo(eR - 8, eT); pctx.fill();
+    pctx.fillStyle = inner;
+    pctx.beginPath(); pctx.moveTo(eL - 2, eT + 3); pctx.lineTo(eL - 4, eT - 11); pctx.lineTo(eL + 5, eT); pctx.fill();
+    pctx.beginPath(); pctx.moveTo(eR + 2, eT + 3); pctx.lineTo(eR + 4, eT - 11); pctx.lineTo(eR - 5, eT); pctx.fill();
   } else {
-    // Tabby, Siamese, Calico default
-    pctx.fillStyle = fur;
-    pctx.beginPath(); pctx.moveTo(-2, -22); pctx.lineTo(-10, -40); pctx.lineTo(6, -28); pctx.fill();
-    pctx.beginPath(); pctx.moveTo(20, -22); pctx.lineTo(28, -40); pctx.lineTo(14, -28); pctx.fill();
-    pctx.fillStyle = '#ffccbc';
-    pctx.beginPath(); pctx.moveTo(0, -26); pctx.lineTo(-6, -38); pctx.lineTo(4, -30); pctx.fill();
-    pctx.beginPath(); pctx.moveTo(18, -26); pctx.lineTo(24, -38); pctx.lineTo(26, -28); pctx.fill();
+    // Standard triangle (Tabby, Calico)
+    pctx.beginPath(); pctx.moveTo(eL - 3, eT + 5); pctx.lineTo(eL - 3, eT - 13); pctx.lineTo(eL + 8, eT - 1); pctx.fill();
+    pctx.beginPath(); pctx.moveTo(eR + 3, eT + 5); pctx.lineTo(eR + 3, eT - 13); pctx.lineTo(eR - 8, eT - 1); pctx.fill();
+    pctx.fillStyle = inner;
+    if (type === 'Calico') pctx.fillStyle = mixColor('#e67e22', '#ffccbc', 0.6);
+    pctx.beginPath(); pctx.moveTo(eL - 1, eT + 2); pctx.lineTo(eL - 1, eT - 8); pctx.lineTo(eL + 5, eT - 1); pctx.fill();
+    pctx.beginPath(); pctx.moveTo(eR + 1, eT + 2); pctx.lineTo(eR + 1, eT - 8); pctx.lineTo(eR - 5, eT - 1); pctx.fill();
   }
 
-  // Face
+  // ----- Muzzle / face -----
   if (type === 'Persian') {
-    pctx.fillStyle = shadeColor(fur, -10);
-    pctx.beginPath(); pctx.ellipse(14, -8, 9, 7, 0, 0, Math.PI * 2); pctx.fill();
+    // Flat pushed-in face: bold white muzzle pad, big nose centered between the eyes, mouth below
+    pctx.fillStyle = mixColor(skin, '#ffffff', 0.62);
+    pctx.beginPath(); pctx.ellipse(headX, headY + 2, 12.5, 9, 0, 0, Math.PI * 2); pctx.fill();
+    pctx.fillStyle = '#e2725b';
+    pctx.beginPath(); pctx.ellipse(headX, headY + 1, 3.6, 2.8, 0, 0, Math.PI * 2); pctx.fill();
+    pctx.strokeStyle = mixColor(skin, '#000000', 0.3);
+    pctx.lineWidth = 1.2;
+    pctx.beginPath(); pctx.arc(headX - 3.5, headY + 5.5, 3.2, 0, Math.PI); pctx.stroke();
+    pctx.beginPath(); pctx.arc(headX + 3.5, headY + 5.5, 3.2, 0, Math.PI); pctx.stroke();
+  } else if (type === 'Sphynx') {
     pctx.fillStyle = '#ffab91';
-    pctx.beginPath(); pctx.ellipse(14, -6, 3.5, 2.5, 0, 0, Math.PI * 2); pctx.fill();
+    pctx.beginPath(); pctx.arc(headX + 2, headY + 4, 2.2, 0, Math.PI * 2); pctx.fill();
   } else {
     pctx.fillStyle = '#ffab91';
-    pctx.beginPath(); pctx.arc(14, -6, 3, 0, Math.PI * 2); pctx.fill();
+    pctx.beginPath(); pctx.arc(headX + 2, headY + 6, 2.6, 0, Math.PI * 2); pctx.fill();
   }
 
-  // Eyes
-  const eyeColor = type === 'Siamese' ? '#48cae4' : eye;
-  pctx.fillStyle = 'white';
-  pctx.beginPath(); pctx.ellipse(4, -14, 6, 7, 0, 0, Math.PI * 2); pctx.fill();
-  pctx.beginPath(); pctx.ellipse(22, -14, 6, 7, 0, 0, Math.PI * 2); pctx.fill();
-  pctx.fillStyle = eyeColor;
-  pctx.beginPath(); pctx.arc(5, -13, 3.5, 0, Math.PI * 2); pctx.fill();
-  pctx.beginPath(); pctx.arc(23, -13, 3.5, 0, Math.PI * 2); pctx.fill();
+  // ----- Eyes (breed-shaped) -----
+  let eyeColor = (type === 'Siamese') ? '#48cae4' : eye;
+  const eLx = headX - headR * 0.45, eRx = headX + headR * 0.45, ey = headY - 2;
+  if (type === 'Persian') {
+    // Big round wide-set eyes
+    pctx.fillStyle = 'white';
+    pctx.beginPath(); pctx.ellipse(eLx - 1, ey, 6.5, 7, 0, 0, Math.PI * 2); pctx.fill();
+    pctx.beginPath(); pctx.ellipse(eRx + 1, ey, 6.5, 7, 0, 0, Math.PI * 2); pctx.fill();
+    pctx.fillStyle = eyeColor;
+    pctx.beginPath(); pctx.arc(eLx - 1, ey + 0.5, 4.5, 0, Math.PI * 2); pctx.fill();
+    pctx.beginPath(); pctx.arc(eRx + 1, ey + 0.5, 4.5, 0, Math.PI * 2); pctx.fill();
+  } else if (type === 'Siamese') {
+    // Almond eyes, angled toward the mask center
+    pctx.fillStyle = 'white';
+    pctx.save(); pctx.translate(eLx, ey); pctx.rotate(-0.35);
+    pctx.beginPath(); pctx.ellipse(0, 0, 5.5, 4, 0, 0, Math.PI * 2); pctx.fill(); pctx.restore();
+    pctx.save(); pctx.translate(eRx, ey); pctx.rotate(0.35);
+    pctx.beginPath(); pctx.ellipse(0, 0, 5.5, 4, 0, 0, Math.PI * 2); pctx.fill(); pctx.restore();
+    pctx.fillStyle = eyeColor;
+    pctx.beginPath(); pctx.arc(eLx, ey, 2.6, 0, Math.PI * 2); pctx.fill();
+    pctx.beginPath(); pctx.arc(eRx, ey, 2.6, 0, Math.PI * 2); pctx.fill();
+  } else {
+    pctx.fillStyle = 'white';
+    pctx.beginPath(); pctx.ellipse(eLx, ey, 6, 7, 0, 0, Math.PI * 2); pctx.fill();
+    pctx.beginPath(); pctx.ellipse(eRx, ey, 6, 7, 0, 0, Math.PI * 2); pctx.fill();
+    pctx.fillStyle = eyeColor;
+    pctx.beginPath(); pctx.arc(eLx + 1, ey + 0.5, 3.5, 0, Math.PI * 2); pctx.fill();
+    pctx.beginPath(); pctx.arc(eRx - 1, ey + 0.5, 3.5, 0, Math.PI * 2); pctx.fill();
+  }
+
+  // Whiskers (Sphynx has almost none)
+  if (type !== 'Sphynx') {
+    pctx.strokeStyle = 'rgba(255,255,255,0.75)';
+    pctx.lineWidth = 0.8;
+    pctx.beginPath();
+    pctx.moveTo(headX + 8, headY + 6); pctx.lineTo(headX + 22, headY + 3);
+    pctx.moveTo(headX + 8, headY + 8); pctx.lineTo(headX + 23, headY + 9);
+    pctx.stroke();
+  }
 
   pctx.restore();
 }
 
 // Update preview when colors change
-document.getElementById('fur-color').oninput = updatePreview;
-document.getElementById('eye-color').oninput = updatePreview;
+document.getElementById('fur-color').oninput = () => { updatePreview(); buildBreedGrid(); };
+document.getElementById('eye-color').oninput = () => { updatePreview(); buildBreedGrid(); };
+document.getElementById('patch-color').oninput = () => { updatePreview(); buildBreedGrid(); };
+document.getElementById('dark-color').oninput = () => { updatePreview(); buildBreedGrid(); };
 
 document.getElementById('btn-adopt').onclick = async () => {
   const name = document.getElementById('cat-name').value.trim();
@@ -334,7 +524,8 @@ document.getElementById('btn-adopt').onclick = async () => {
   const eye = document.getElementById('eye-color').value;
   if (!name) return alert('Name your cat!');
   try {
-    await api('POST', '/api/cat', { name, type: selectedBreed, fur_color: fur, eye_color: eye });
+    const cc = getCalicoColors();
+    await api('POST', '/api/cat', { name, type: selectedBreed, fur_color: fur, eye_color: eye, patch_color: cc.patch, dark_color: cc.dark });
     await initGame();
   } catch (e) {
     document.getElementById('create-msg').textContent = e.message;
@@ -1941,7 +2132,10 @@ function drawTabbyStripes(ctx, fur, x, y, w, h) {
 }
 
 function drawCalicoPatches(ctx, fur, x, y, w, h) {
-  const patchColors = ['#e67e22', '#2c3e50', '#ecf0f1'];
+  // Player-chosen Calico trio (older cats fall back to classic orange/charcoal)
+  const patch = (currentCat && currentCat.patch_color) || '#e67e22';
+  const dark = (currentCat && currentCat.dark_color) || '#2c3e50';
+  const patchColors = [patch, dark, '#ecf0f1'];
   for (let i = 0; i < 4; i++) {
     ctx.fillStyle = patchColors[i % 3];
     const px = x + (Math.sin(i * 2.7) * w * 0.3);
