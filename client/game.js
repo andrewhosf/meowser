@@ -2866,41 +2866,81 @@ function drawEatCat(fur, eye, type, bounce, frame) {
   ctx.save();
   ctx.scale(scale, scale);
 
-  // Body
-  ctx.fillStyle = fur;
+  // Head dips toward the bowl with the chewing rhythm
+  const dip = Math.sin(frame * 0.18) * 2;
+  const hy = -3 + bounce + dip;
+
+  // Body with soft volume shading
+  const bodyG = ctx.createRadialGradient(-6, 0, 4, 0, 10, 34);
+  bodyG.addColorStop(0, shadeColor(fur, 16));
+  bodyG.addColorStop(0.65, fur);
+  bodyG.addColorStop(1, shadeColor(fur, -18));
+  ctx.fillStyle = bodyG;
   ctx.beginPath();
   ctx.ellipse(0, 10, 28, 22, 0, 0, Math.PI * 2);
   ctx.fill();
   if (type === 'Tabby') drawTabbyStripes(ctx, fur, 0, 10, 28, 22);
   if (type === 'Calico') drawCalicoPatches(ctx, fur, 0, 10, 28, 22);
-
-  // Head
+  // Belly highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.10)';
   ctx.beginPath();
-  ctx.arc(12, -5 + bounce, 20, 0, Math.PI * 2);
+  ctx.ellipse(-2, 22, 16, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Head, lowered and gradient-shaded
+  const headG = ctx.createRadialGradient(8, hy - 8, 3, 12, hy, 24);
+  headG.addColorStop(0, shadeColor(fur, 14));
+  headG.addColorStop(1, fur);
+  ctx.fillStyle = headG;
+  ctx.beginPath();
+  ctx.arc(12, hy, 20, 0, Math.PI * 2);
   ctx.fill();
 
   // Ears
-  drawBreedEars(ctx, type, fur, bounce, 0, 17);
+  drawBreedEars(ctx, type, fur, bounce + dip, 0, 15);
 
-  // Eyes
+  // Content half-closed eyes while eating (upper lid cuts the eye, small shine below)
   const eyeColor = type === 'Siamese' ? '#48cae4' : eye;
-  ctx.fillStyle = 'white';
-  ctx.beginPath(); ctx.ellipse(4, -8 + bounce, 6, 7, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(22, -8 + bounce, 6, 7, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = eyeColor;
-  ctx.beginPath(); ctx.arc(5, -7 + bounce, 3.5, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(23, -7 + bounce, 3.5, 0, Math.PI * 2); ctx.fill();
+  for (const ex of [4, 22]) {
+    ctx.fillStyle = 'white';
+    ctx.beginPath(); ctx.ellipse(ex, -6 + bounce + dip, 5.5, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = eyeColor;
+    ctx.beginPath(); ctx.arc(ex + 1, -5 + bounce + dip, 3, 0, Math.PI * 2); ctx.fill();
+    // upper lid — eyes lowered in food-focus
+    ctx.fillStyle = shadeColor(fur, -10);
+    ctx.beginPath(); ctx.ellipse(ex, -8.5 + bounce + dip, 6, 2.6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.beginPath(); ctx.arc(ex + 2, -4 + bounce + dip, 0.9, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Nose
+  ctx.fillStyle = '#e08a8a';
+  ctx.beginPath();
+  ctx.moveTo(11, 1 + bounce + dip);
+  ctx.lineTo(15, 1 + bounce + dip);
+  ctx.lineTo(13, 3.2 + bounce + dip);
+  ctx.closePath();
+  ctx.fill();
 
   // Mouth chewing
   ctx.strokeStyle = '#555';
   ctx.lineWidth = 1.5;
   const chew = Math.sin(frame * 0.2) * 2;
   ctx.beginPath();
-  ctx.arc(10, 2 + bounce + chew, 3, 0, Math.PI);
+  ctx.arc(10, 5 + bounce + dip + chew * 0.5, 3, 0, Math.PI);
   ctx.stroke();
   ctx.beginPath();
-  ctx.arc(18, 2 + bounce + chew, 3, 0, Math.PI);
+  ctx.arc(16, 5 + bounce + dip + chew * 0.5, 3, 0, Math.PI);
   ctx.stroke();
+
+  // Whiskers fanning from each cheek
+  ctx.strokeStyle = 'rgba(80,60,50,0.5)';
+  ctx.lineWidth = 1;
+  for (const s of [-1, 1]) {
+    const bx = 13 + s * 6;
+    ctx.beginPath(); ctx.moveTo(bx, 2 + bounce + dip); ctx.lineTo(bx + s * 13, 0 + bounce + dip); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(bx, 4 + bounce + dip); ctx.lineTo(bx + s * 13, 6 + bounce + dip); ctx.stroke();
+  }
 
   ctx.restore();
 }
