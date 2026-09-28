@@ -52,7 +52,13 @@ const resetForm = document.getElementById('reset-form');
 
 // Game
 const canvas = document.getElementById('room');
-const ctx = canvas.getContext('2d');
+// ctx is swapped to the catdergarten canvas while drawing multiplayer cats
+let ctx = canvas.getContext('2d');
+let activeCdCat = null;   // catdergarten cat whose colors the pose helpers should use
+function withCtx(other, fn) {
+  const saved = ctx; ctx = other;
+  try { fn(); } finally { ctx = saved; }
+}
 const statMoney = document.getElementById('stat-money');
 const barHappiness = document.getElementById('bar-happiness');
 const barHunger = document.getElementById('bar-hunger');
@@ -614,7 +620,7 @@ function updateStats() {
     claimMorningBonus();
   }
   catNameDisplay.textContent = currentCat.name;
-  catTypeDisplay.textContent = currentCat.type;
+  catTypeDisplay.textContent = (currentCat.type || 'Tabby').replace(/^./, c => c.toUpperCase());
 
   const h = Math.round(currentCat.happiness || 0);
   const hu = Math.round(currentCat.hunger || 0);
@@ -1868,9 +1874,13 @@ function drawCat() {
   ctx.translate(x, y);
   ctx.scale(facing, 1);
 
-  const fur = cat.fur_color || '#d4a373';
+  const fur0 = cat.fur_color || '#d4a373';
+  const rawType = cat.type || 'Tabby';
+  // Normalize legacy lowercase types (older rows stored 'tabby' etc.)
+  const type = rawType.charAt(0).toUpperCase() + rawType.slice(1);
+  // Sphynx renders in a skin tone wherever the room draw functions use fur
+  const fur = type === 'Sphynx' ? mixColor(fur0, '#c98d7f', 0.55) : fur0;
   const eye = cat.eye_color || '#4caf50';
-  const type = cat.type || 'Tabby';
 
   // Shadow (breed-sized)
   const shadowScale = type === 'Maine Coon' ? 1.2 : 1.0;
@@ -1898,6 +1908,8 @@ function drawCat() {
   } else {
     drawStandingCat(fur, eye, type, bounce, isWalking, c.frame);
   }
+  // Breed detail layered on top of the pose (fluff, points mask, flat face, forehead M)
+  if (!catSleeping && c.state !== 'nap') drawBreedExtras(fur, eye, type, bounce, c.state);
 
   ctx.restore();
 
@@ -2133,8 +2145,9 @@ function drawTabbyStripes(ctx, fur, x, y, w, h) {
 
 function drawCalicoPatches(ctx, fur, x, y, w, h) {
   // Player-chosen Calico trio (older cats fall back to classic orange/charcoal)
-  const patch = (currentCat && currentCat.patch_color) || '#e67e22';
-  const dark = (currentCat && currentCat.dark_color) || '#2c3e50';
+  const src = activeCdCat || currentCat;
+  const patch = (src && src.patch_color) || '#e67e22';
+  const dark = (src && src.dark_color) || '#2c3e50';
   const patchColors = [patch, dark, '#ecf0f1'];
   for (let i = 0; i < 4; i++) {
     ctx.fillStyle = patchColors[i % 3];
@@ -2174,6 +2187,84 @@ function drawSphynxWrinkles(ctx, x, y) {
   ctx.beginPath();
   ctx.moveTo(x + 2, y - 12); ctx.quadraticCurveTo(x + 8, y - 15, x + 12, y - 10);
   ctx.stroke();
+}
+
+// ===== BREED EXTRAS (room cat) =====
+// Per-pose head/body geometry table, matched to each pose renderer.
+// head: [hx, hy, r]   body: [cx, cy, rx, ry]
+const POSE_GEO = {
+  walk:   { h: [12, -15, 22], b: [0, 10, 28, 22], eyes: [-7, 9, -18, 5] },
+  stand:  { h: [12, -15, 22], b: [0, 10, 28, 22], eyes: [-7, 9, -18, 5] },
+  sit:    { h: [10, -22, 20], b: [0, 5, 22, 26],  eyes: [-6, 10, -24, 4.5] },
+  eat:    { h: [12, -5, 20],  b: [0, 10, 28, 22], eyes: [-8, 10, -8, 4.5] },
+  piss:   { h: [12, -5, 20],  b: [0, 18, 26, 16], eyes: [-8, 10, -8, 4.5] },
+  play:   { h: [12, -12, 20], b: [0, 15, 26, 18], eyes: [-8, 10, -16, 5.5] },
+  petted: { h: [10, -22, 20], b: [0, 5, 22, 26],  eyes: null },   // closed happy eyes
+  loaf:   { h: [0, -10, 18],  b: [0, 12, 22, 13], eyes: null }    // shared face helper
+};
+
+function drawBreedExtras(fur, eye, type, bounce, state) {
+  if (state === 'nap') return;   // sleeping face: leave the closed-eye art alone
+  const g = POSE_GEO[state] || POSE_GEO.stand;
+  const [hx, hy0, hr] = g.h;
+  const hy = hy0 + bounce;
+  const skin = type === 'Sphynx' ? mixColor(fur, '#c98d7f', 0.55) : fur;
+  const dark = shadeColor(fur, -40);
+
+  ctx.save();
+  const s = getBreedScale(type);
+  ctx.scale(s, s);
+
+  // Fluffy silhouette for long-haired breeds
+  if (type === 'Maine Coon' || type === 'Persian') {
+    pvFluff(ctx, g.b[0], g.b[1], g.b[2] + 1, g.b[3] + 1, shadeColor(fur, -14), 20, 6);
+    pvFluff(ctx, hx, hy, hr + 1, hr + 1, shadeColor(fur, -14), 14, 5);
+  }
+
+  if (type === 'Tabby') {
+    // Forehead "M" — sits above the eyes in every pose
+    ctx.strokeStyle = shadeColor(fur, -30);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(hx - 6, hy - hr + 8); ctx.lineTo(hx - 3, hy - hr + 4);
+    ctx.lineTo(hx, hy - hr + 8); ctx.lineTo(hx + 3, hy - hr + 4);
+    ctx.lineTo(hx + 6, hy - hr + 8);
+    ctx.stroke();
+  }
+
+  // Face-level detail only where the eye row is known, so closed-eye
+  // poses (petted/loaf) are never painted over.
+  if (g.eyes && type === 'Siamese') {
+    const [dxL, dxR, ey0, er] = g.eyes;
+    ctx.fillStyle = dark;
+    ctx.beginPath(); ctx.ellipse(hx + 1, hy + 6, 11, 8, 0, 0, Math.PI * 2); ctx.fill();
+    // redraw almond blue eyes over the mask at the pose's eye row
+    for (const [dx, rot] of [[dxL, -0.3], [dxR, 0.3]]) {
+      ctx.save();
+      ctx.translate(hx + dx, ey0 + bounce);
+      ctx.rotate(rot);
+      ctx.fillStyle = 'white';
+      ctx.beginPath(); ctx.ellipse(0, 0, er, er * 0.72, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#48cae4';
+      ctx.beginPath(); ctx.arc(0, 0, er * 0.55, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  if (g.eyes && type === 'Persian') {
+    // Flat face: white muzzle pad + nose + mouth under the big eyes
+    const my = hy + 7;
+    ctx.fillStyle = mixColor(skin, '#ffffff', 0.6);
+    ctx.beginPath(); ctx.ellipse(hx + 2, my, 10, 7, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e2725b';
+    ctx.beginPath(); ctx.ellipse(hx + 2, my - 1, 3, 2.3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = shadeColor(skin, -30);
+    ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(hx - 1, my + 3, 2.8, 0, Math.PI); ctx.stroke();
+    ctx.beginPath(); ctx.arc(hx + 5, my + 3, 2.8, 0, Math.PI); ctx.stroke();
+  }
+
+  ctx.restore();
 }
 
 function drawStandingCat(fur, eye, type, bounce, isWalking, frame) {
@@ -2417,6 +2508,26 @@ function drawNapCat(fur, eye, type, frame) {
   ctx.restore();
 }
 
+
+// Generic face for poses that don't draw eyes individually (e.g. loaf).
+// Signature kept for the existing call site: drawCatFace(ctx, eye, type, x, y, sleeping)
+function drawCatFace(c, eye, type, x, y, sleeping) {
+  const eyeColor = type === 'Siamese' ? '#48cae4' : eye;
+  if (sleeping) {
+    c.strokeStyle = '#333'; c.lineWidth = 1.5;
+    c.beginPath(); c.moveTo(x - 8, y - 2); c.lineTo(x - 2, y - 2); c.stroke();
+    c.beginPath(); c.moveTo(x + 2, y - 2); c.lineTo(x + 8, y - 2); c.stroke();
+  } else {
+    c.fillStyle = 'white';
+    c.beginPath(); c.ellipse(x - 5, y - 2, 4.5, 5.5, 0, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.ellipse(x + 5, y - 2, 4.5, 5.5, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = eyeColor;
+    c.beginPath(); c.arc(x - 5, y - 1.5, 2.6, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(x + 5, y - 1.5, 2.6, 0, Math.PI * 2); c.fill();
+  }
+  c.fillStyle = '#ffab91';
+  c.beginPath(); c.arc(x, y + 4, 2, 0, Math.PI * 2); c.fill();
+}
 
 function drawLoafCat(fur, eye, type, frame) {
   const scale = getBreedScale(type);
@@ -2999,7 +3110,10 @@ function enterCatdergarten() {
   socket.emit('join-catdergarten', {
     name: currentCat.name,
     type: currentCat.type,
-    furColor: currentCat.fur_color
+    furColor: currentCat.fur_color,
+    eyeColor: currentCat.eye_color,
+    patchColor: currentCat.patch_color,
+    darkColor: currentCat.dark_color
   });
 
   socket.on('catdergarten-state', (cats) => {
@@ -3123,7 +3237,26 @@ function drawCatdergarten() {
   cdCtx.fillRect(0, 60, 800, 8);
 
   for (const [id, c] of catdergartenCats) {
-    drawSimpleCat(cdCtx, c.x, c.y, c.furColor || '#d4a373', c.name, c.frame);
+    withCtx(cdCtx, () => {
+      const savedCd = activeCdCat;
+      activeCdCat = { patch_color: c.patchColor, dark_color: c.darkColor };
+      try {
+        cdCtx.save();
+        cdCtx.translate(c.x, c.y);
+        const cType = (c.type || 'Tabby'); const type2 = cType.charAt(0).toUpperCase() + cType.slice(1);
+        const fur = type2 === 'Sphynx' ? mixColor(c.furColor || '#d4a373', '#c98d7f', 0.55) : (c.furColor || '#d4a373');
+        const bounce = Math.sin(c.frame * 0.1) * 2;
+        cdCtx.fillStyle = 'rgba(0,0,0,0.1)';
+        cdCtx.beginPath(); cdCtx.ellipse(0, 35, 25, 8, 0, 0, Math.PI * 2); cdCtx.fill();
+        drawStandingCat(fur, c.eyeColor || '#4caf50', type2, bounce, true, c.frame);
+        drawBreedExtras(fur, c.eyeColor || '#4caf50', type2, bounce, 'stand');
+        cdCtx.fillStyle = '#333';
+        cdCtx.font = '11px sans-serif';
+        cdCtx.textAlign = 'center';
+        cdCtx.fillText(c.name, 0, 48);
+        cdCtx.restore();
+      } finally { activeCdCat = savedCd; }
+    });
   }
 
   // LIVESTREAM OVERLAY

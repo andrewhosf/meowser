@@ -269,8 +269,9 @@ input[type="color"] {
 #game-area {
   display: flex;
   gap: 16px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;          /* panel stays on the right; scales canvas instead */
   justify-content: center;
+  align-items: flex-start;
   width: 100%;
   max-width: 1200px;
 }
@@ -280,13 +281,25 @@ input[type="color"] {
   border-radius: 16px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.08);
   cursor: crosshair;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 800px;
+  width: 100%;
+  height: auto;               /* keeps 8:5 aspect from the canvas attrs */
 }
 
 #side-panel {
+  flex: 0 0 300px;
   width: 300px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* Very narrow (phone): stack is the only option */
+@media (max-width: 640px) {
+  #game-area { flex-wrap: wrap; }
+  #side-panel { flex: 1 1 100%; width: 100%; }
 }
 
 #cat-info {

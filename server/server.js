@@ -707,12 +707,12 @@ io.on('connection', (socket) => {
   console.log('Socket connected:', socket.id);
 
   socket.on('join-catdergarten', (data) => {
-    const { name, type, furColor } = data;
+    const { name, type, furColor, eyeColor, patchColor, darkColor } = data;
     catdergartenCats.set(socket.id, {
       x: 100 + Math.random() * 600,
       y: 100 + Math.random() * 400,
       vx: 0, vy: 0,
-      name, type, furColor,
+      name, type, furColor, eyeColor, patchColor, darkColor,
       frame: 0,
       targetX: null, targetY: null
     });
