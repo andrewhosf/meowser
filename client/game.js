@@ -633,6 +633,7 @@ function updateStats() {
   if (!currentCat) return;
   statMoney.textContent = '$' + (currentCat.total_earnings?.toFixed(1) || 0);
   statAge.textContent = currentCat.age || 0;
+  document.getElementById('stat-age-unit').textContent = (currentCat.age || 0) === 1 ? 'day' : 'days';
   statStage.textContent = currentCat.growth_stage || 'kitten';
   statGameDay.textContent = currentCat.game_day || 1;
   gameHour = currentCat.game_hour || 6;
@@ -1039,9 +1040,10 @@ function drawRoom() {
       b.beginPath(); b.moveTo(0, y); b.lineTo(ROOM_W, y); b.stroke();
     }
     // Staggered plank butt-joints (short, not full-height — reads as wood, not grid)
-    b.strokeStyle = isNight ? 'rgba(255,235,190,0.05)' : 'rgba(150,110,55,0.11)';
-    for (let y = 78; y < ROOM_H; y += 56) {
-      const off = (y / 56) % 2 ? 80 : 0;
+    b.strokeStyle = isNight ? 'rgba(255,235,190,0.06)' : 'rgba(150,110,55,0.14)';
+    let rowIdx = 0;
+    for (let y = 78; y < ROOM_H; y += 56, rowIdx++) {
+      const off = rowIdx % 2 ? 80 : 0;
       for (let x = off + 40; x < ROOM_W; x += 160) {
         b.beginPath(); b.moveTo(x, y - 46); b.lineTo(x, y - 6); b.stroke();
       }
