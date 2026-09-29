@@ -3147,7 +3147,704 @@ function drawParticles() {
 // Blink scheduling (frame-based; shared by room cat)
 const blink = { until: 0, next: 200 };
 
+// ===== CUTAWAY CINEMATICS (zoom-in action sequences) =====
+let cutaway = null;   // { kind, variant, t0, fx, fy }
+const CUT = { zin: 340, xin: 170, xout: 170, zout: 400, zoom: 2.5 };
+const CUT_HOLD = { pet: 2300, play: 2600, talk: 3100 };
+
+function startCutaway(kind, variant) {
+  if (cutaway) return false;
+  cutaway = { kind, variant: variant || null, t0: performance.now(), fx: catEntity.x, fy: catEntity.y - 18 };
+  return true;
+}
+
+function cutawayPhase() {
+  const el = performance.now() - cutaway.t0;
+  const hold = CUT_HOLD[cutaway.kind];
+  if (el < CUT.zin) {
+    const u = el / CUT.zin;
+    return { stage: 'zoom', s: 1 + (CUT.zoom - 1) * (1 - Math.pow(1 - u, 3)) };
+  }
+  if (el < CUT.zin + CUT.xin) {
+    return { stage: 'overlay', s: CUT.zoom, a: (el - CUT.zin) / CUT.xin, u: 0 };
+  }
+  if (el < CUT.zin + CUT.xin + hold) {
+    return { stage: 'overlay', s: CUT.zoom, a: 1, u: (el - CUT.zin - CUT.xin) / hold };
+  }
+  const e2 = el - CUT.zin - CUT.xin - hold;
+  if (e2 < CUT.xout) {
+    return { stage: 'overlay', s: CUT.zoom, a: 1 - e2 / CUT.xout, u: 1 };
+  }
+  const e3 = e2 - CUT.xout;
+  if (e3 < CUT.zout) {
+    const u = e3 / CUT.zout;
+    return { stage: 'zoom', s: CUT.zoom - (CUT.zoom - 1) * (u * u * (3 - 2 * u)) };
+  }
+  return null;
+}
+
+// small easing helpers (namespaced cu_ to avoid collisions)
+const cuClamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const cuLerp = (a, b, t) => a + (b - a) * t;
+const cuEaseOut = t => 1 - Math.pow(1 - t, 3);
+const cuEaseIn = t => t * t;
+const cuEaseIO = t => t * t * (3 - 2 * t);
+const cuOutBack = t => { const c = 1.70158; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
+const cuBump = (u, a, b) => (u >= a && u <= b) ? Math.sin(((u - a) / (b - a)) * Math.PI) : 0;
+
+function cuHeart(x, y, s, color) {
+  ctx.fillStyle = color;
+  ctx.save();
+  ctx.translate(x, y); ctx.scale(s / 16, s / 16);
+  ctx.beginPath();
+  ctx.moveTo(0, 5);
+  ctx.bezierCurveTo(-9, -4, -5, -13, 0, -6);
+  ctx.bezierCurveTo(5, -13, 9, -4, 0, 5);
+  ctx.fill();
+  ctx.restore();
+}
+
+// Close-up head: ears, gradient skull, breed markings, lidded eyes, nose, mouth, whiskers
+function cuFace(o) {
+  const { cx, cy, r, tilt, skin, eye, type } = o;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(tilt || 0);
+
+  // Ears (behind head); earsBack flattens them into alert "airplane" ears,
+  // earsFwd perks them forward-and-in for predatory focus
+  const eb = o.earsBack || 0;
+  const ef = o.earsFwd || 0;
+  if (type === 'Scottish Fold') {
+    ctx.fillStyle = shadeColor(skin, -14);
+    for (const sgn of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(sgn * r * 0.58, -r * 0.72 + eb * r * 0.22, r * 0.3, r * 0.19, sgn * (0.55 + eb * 0.5), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    const earScale = type === 'Sphynx' ? 1.3 : type === 'Siamese' ? 1.15 : type === 'Persian' ? 0.55 : 0.9;
+    for (const sgn of [-1, 1]) {
+      ctx.save();
+      if (eb > 0) {
+        ctx.translate(sgn * r * 0.6, -r * 0.5);
+        ctx.rotate(sgn * eb * 1.18);
+        ctx.translate(-sgn * r * 0.6, r * 0.5);
+      } else if (ef > 0) {
+        // forward perk: both tips converge toward the centerline (ears pricked at target);
+        // the head tilt + lean carries them toward the ball side
+        ctx.translate(sgn * r * 0.6, -r * 0.5);
+        ctx.rotate(-sgn * ef * 0.42);
+        ctx.translate(-sgn * r * 0.6, r * 0.5);
+      }
+      ctx.fillStyle = shadeColor(skin, -10);
+      ctx.beginPath();
+      ctx.moveTo(sgn * r * 0.32, -r * 0.7);
+      ctx.lineTo(sgn * r * 0.72, -r * (0.68 + 0.85 * earScale));
+      ctx.lineTo(sgn * r * 0.88, -r * 0.24);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(228,150,150,0.55)';
+      ctx.beginPath();
+      ctx.moveTo(sgn * r * 0.44, -r * 0.64);
+      ctx.lineTo(sgn * r * 0.66, -r * (0.62 + 0.6 * earScale));
+      ctx.lineTo(sgn * r * 0.76, -r * 0.34);
+      ctx.closePath();
+      ctx.fill();
+      if (type === 'Maine Coon') {
+        ctx.fillStyle = shadeColor(skin, 12);
+        ctx.beginPath();
+        ctx.moveTo(sgn * r * 0.72, -r * (0.68 + 0.85 * earScale));
+        ctx.lineTo(sgn * r * 0.8, -r * (0.85 + 0.95 * earScale));
+        ctx.lineTo(sgn * r * 0.83, -r * (0.6 + 0.8 * earScale));
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  // Skull
+  const hg = ctx.createRadialGradient(-r * 0.25, -r * 0.35, r * 0.2, 0, 0, r * 1.4);
+  hg.addColorStop(0, shadeColor(skin, 16));
+  hg.addColorStop(1, shadeColor(skin, -14));
+  ctx.fillStyle = hg;
+  ctx.beginPath();
+  if (type === 'Persian') ctx.ellipse(0, 0, r * 1.1, r * 0.94, 0, 0, Math.PI * 2);
+  else ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Breed markings
+  if (type === 'Maine Coon') {
+    ctx.fillStyle = shadeColor(skin, 8);
+    for (let i = 0; i < 9; i++) {
+      const a = Math.PI * 0.18 + i * Math.PI * 0.64 / 8;
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * r * 0.96, Math.sin(a) * r * 0.82, r * 0.15, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  if (type === 'Tabby') {
+    ctx.strokeStyle = shadeColor(skin, -30);
+    ctx.lineWidth = r * 0.055; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.34, -r * 0.52);
+    ctx.lineTo(-r * 0.17, -r * 0.74);
+    ctx.lineTo(0, -r * 0.48);
+    ctx.lineTo(r * 0.17, -r * 0.74);
+    ctx.lineTo(r * 0.34, -r * 0.52);
+    ctx.stroke();
+  }
+  if (type === 'Calico') {
+    ctx.fillStyle = (currentCat && currentCat.patch_color) || '#e67e22';
+    ctx.beginPath(); ctx.ellipse(-r * 0.55, -r * 0.32, r * 0.44, r * 0.34, 0.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = (currentCat && currentCat.dark_color) || '#3a3f4a';
+    ctx.beginPath(); ctx.ellipse(r * 0.5, -r * 0.42, r * 0.38, r * 0.3, -0.4, 0, Math.PI * 2); ctx.fill();
+  }
+  if (type === 'Siamese') {
+    ctx.fillStyle = shadeColor(skin, -55);
+    ctx.beginPath(); ctx.ellipse(0, r * 0.3, r * 0.56, r * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  if (type === 'Sphynx') {
+    ctx.strokeStyle = 'rgba(120,70,55,0.35)'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(0, -r * 0.3, r * 0.55, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, -r * 0.22, r * 0.42, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+  }
+
+  // Blush (petting)
+  if (o.blush) {
+    ctx.fillStyle = 'rgba(235,130,120,0.28)';
+    for (const sgn of [-1, 1]) {
+      ctx.beginPath(); ctx.ellipse(sgn * r * 0.62, r * 0.18, r * 0.16, r * 0.09, 0, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // Eyes
+  const ex = r * 0.42, ey = -r * 0.06;
+  const irisS = o.irisScale || 1;
+  const eyeH = r * 0.24 * (1 - (o.narrow || 0));
+  for (let i = 0; i < 2; i++) {
+    const sgn = i === 0 ? -1 : 1;
+    const x = sgn * ex, y = ey;
+    if (o.happy) {
+      ctx.strokeStyle = '#4a3b30'; ctx.lineWidth = r * 0.05; ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(x, y + r * 0.08, r * 0.17, Math.PI * 1.15, Math.PI * 1.85);
+      ctx.stroke();
+      continue;
+    }
+    const lid = o.lids ? o.lids[i] : 0;
+    ctx.save();
+    ctx.beginPath(); ctx.ellipse(x, y, r * 0.22, eyeH, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#fffdf8'; ctx.fill();
+    ctx.clip();                                   // iris can never break the squint aperture
+    const lx = (o.lookX || 0) * r * 0.16, ly = (o.lookY || 0) * r * 0.1;
+    ctx.fillStyle = eye;
+    ctx.beginPath(); ctx.arc(x + lx, y + ly, r * 0.145 * irisS, 0, Math.PI * 2); ctx.fill();
+    const pr = (o.pupils != null ? o.pupils : 1) * r * 0.085 * irisS;
+    ctx.fillStyle = '#17120e';
+    ctx.beginPath();
+    ctx.ellipse(x + lx, y + ly, pr * (o.slit ? 0.32 : 1), pr * (o.slit ? 1.7 : 1), 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    // catchlight sits opposite the gaze shift so it never fights the tracking
+    ctx.beginPath(); ctx.arc(x + lx * 0.5 - (o.lookX || 0) * r * 0.04 + r * 0.045, y + ly - r * 0.055, r * 0.045, 0, Math.PI * 2); ctx.fill();
+    if (lid > 0.02) {
+      ctx.fillStyle = shadeColor(skin, -8);
+      ctx.fillRect(x - r * 0.3, y - eyeH - r * 0.03, r * 0.6, (eyeH * 2 + r * 0.06) * lid);
+    }
+    ctx.restore();
+  }
+
+  // Brows (quizzical raised brow / angry focus brows)
+  if (o.brows) {
+    ctx.strokeStyle = shadeColor(skin, -42); ctx.lineWidth = r * 0.045; ctx.lineCap = 'round';
+    if (o.brows === 'quizzical') {
+      // one smoothly raised brow, one level — a clean 'huh?' without the furrow
+      ctx.beginPath();
+      ctx.moveTo(-ex - r * 0.15, ey - r * 0.38);
+      ctx.quadraticCurveTo(-ex, ey - r * 0.52, -ex + r * 0.15, ey - r * 0.44);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(ex - r * 0.14, ey - r * 0.36);
+      ctx.lineTo(ex + r * 0.15, ey - r * 0.37);
+      ctx.stroke();
+    } else if (o.brows === 'angry') {
+      for (const sgn of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(sgn * (ex - r * 0.17), ey - r * 0.44);
+        ctx.lineTo(sgn * (ex + r * 0.15), ey - r * 0.3);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // Nose
+  const noseY = (type === 'Persian') ? r * 0.1 : r * 0.26;
+  ctx.fillStyle = '#e08a8a';
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.07, noseY); ctx.lineTo(r * 0.07, noseY); ctx.lineTo(0, noseY + r * 0.09);
+  ctx.closePath(); ctx.fill();
+
+  // Mouth
+  ctx.strokeStyle = '#4a3b30'; ctx.lineWidth = r * 0.035; ctx.lineCap = 'round';
+  if (o.smile) {
+    ctx.beginPath(); ctx.arc(0, noseY + r * 0.1, r * 0.16, Math.PI * 0.15, Math.PI * 0.85); ctx.stroke();
+  } else if (o.mouth === 'o') {
+    // focused/open pre-pounce mouth
+    ctx.fillStyle = '#7a4040';
+    ctx.beginPath(); ctx.ellipse(0, noseY + r * 0.16, r * 0.1, r * 0.09 + (o.mouthOpen || 0) * r * 0.07, 0, 0, Math.PI * 2); ctx.fill();
+  } else if (o.grin) {
+    ctx.beginPath(); ctx.arc(0, noseY + r * 0.06, r * 0.22, Math.PI * 0.1, Math.PI * 0.9); ctx.stroke();
+    ctx.beginPath(); ctx.arc(-r * 0.13, noseY + r * 0.08, r * 0.06, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(r * 0.13, noseY + r * 0.08, r * 0.06, 0, Math.PI * 2); ctx.stroke();
+  } else if (o.mouth === 'flat') {
+    // confused, slightly lopsided flat mouth
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.14, noseY + r * 0.16);
+    ctx.quadraticCurveTo(0, noseY + r * 0.13, r * 0.12, noseY + r * 0.19);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(0, noseY + r * 0.09);
+    ctx.quadraticCurveTo(-r * 0.08, noseY + r * 0.18, -r * 0.17, noseY + r * 0.12);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, noseY + r * 0.09);
+    ctx.quadraticCurveTo(r * 0.08, noseY + r * 0.18, r * 0.17, noseY + r * 0.12);
+    ctx.stroke();
+  }
+
+  // Whiskers
+  if (o.whiskers !== false && type !== 'Sphynx') {
+    ctx.strokeStyle = 'rgba(90,70,55,0.45)'; ctx.lineWidth = r * 0.018;
+    for (const sgn of [-1, 1]) {
+      for (let w = 0; w < 3; w++) {
+        const wy = noseY + w * r * 0.08;
+        ctx.beginPath();
+        ctx.moveTo(sgn * r * 0.5, wy);
+        ctx.lineTo(sgn * r * 1.05, wy - r * 0.1 + w * r * 0.1);
+        ctx.stroke();
+      }
+    }
+  }
+
+  ctx.restore();
+}
+
+// --- Scene: hand petting the cat ---
+function drawPetCutaway(u, skin, eye, type) {
+  const r = 118;
+  const strokeT = cuClamp((u - 0.18) / 0.7, 0, 1);
+  const stroke = Math.sin(strokeT * Math.PI * 3);
+  const dip = stroke * 7;
+  const happy = u > 0.16;
+
+  // purr ripples
+  if (u > 0.35 && u < 0.9) {
+    const pa = 0.35 + 0.2 * Math.sin(u * Math.PI * 14);
+    ctx.strokeStyle = `rgba(120,90,70,${pa})`;
+    ctx.lineWidth = 3; ctx.lineCap = 'round';
+    for (const sgn of [-1, 1]) {
+      const px = 372 + sgn * (r + 14);
+      ctx.beginPath(); ctx.arc(px, 300, 12, sgn > 0 ? -0.8 : Math.PI - 0.8, sgn > 0 ? 0.8 : Math.PI + 0.8); ctx.stroke();
+      ctx.beginPath(); ctx.arc(px, 300, 22, sgn > 0 ? -0.7 : Math.PI - 0.7, sgn > 0 ? 0.7 : Math.PI + 0.7); ctx.stroke();
+    }
+  }
+
+  cuFace({ cx: 372, cy: 300 + dip, r, tilt: -0.05 + stroke * 0.025, skin, eye, type, happy, smile: true, blush: u > 0.3 });
+
+  // floating hearts
+  for (let i = 0; i < 4; i++) {
+    const hu = (u * 2.4 + i * 0.27) % 1;
+    const hxx = 372 - 130 + i * 75 + Math.sin(hu * 6 + i) * 16;
+    const hyy = 240 - hu * 140;
+    cuHeart(hxx, hyy, 17 * (1 - hu * 0.4), `rgba(231,111,81,${0.85 * (1 - hu)})`);
+  }
+
+  // the hand — one connected silhouette (wrist from the top edge, palm, 4 fingers, thumb),
+  // skin tone distinct from fur, separation lines instead of detached ovals
+  const hin = cuEaseOut(cuClamp(u / 0.16, 0, 1));
+  const hout = u > 0.92 ? (u - 0.92) / 0.08 : 0;
+  const hx = cuLerp(250, 372 + 16 + stroke * 58, hin) + 500 * hout;
+  const hy = cuLerp(-340, 300 - r * 1.34, hin) + (-400 - (300 - r * 1.34)) * hout;
+  ctx.save();
+  ctx.translate(hx, hy);
+  ctx.rotate(-0.14 + stroke * 0.10);
+  const palmA = '#f4cda6', palmB = '#e2ab7e', lineA = 'rgba(150,95,50,0.5)';
+  // wrist/forearm running off the top edge, aligned with the palm (no broken wrist bend)
+  ctx.fillStyle = palmB;
+  ctx.beginPath();
+  ctx.moveTo(-40, -240); ctx.lineTo(48, -240); ctx.lineTo(60, -34); ctx.lineTo(-54, -34);
+  ctx.closePath(); ctx.fill();
+  // palm (no bottom stroke — merges into fingers as one mass)
+  const pg = ctx.createLinearGradient(0, -60, 0, 60);
+  pg.addColorStop(0, palmA); pg.addColorStop(1, palmB);
+  ctx.fillStyle = pg;
+  ctx.beginPath(); ctx.ellipse(0, 0, 74, 58, 0.12, 0, Math.PI * 2); ctx.fill();
+  // long relaxed fingers draping down the far side of the head — stroking, not gripping:
+  // nearly straight with rounded tips flicking OUT past the brow
+  ctx.beginPath();
+  ctx.moveTo(-66, -8);
+  for (let i = 0; i < 4; i++) {
+    const fx0 = -58 + i * 33;
+    ctx.quadraticCurveTo(fx0 + 1, 78 - i * 6, fx0 + 15 + i * 3, 96 - i * 7);
+    ctx.quadraticCurveTo(fx0 + 30 + i * 3, 82 - i * 6, fx0 + 31, -2);
+  }
+  ctx.lineTo(66, -8);
+  ctx.closePath();
+  ctx.fillStyle = palmA;
+  ctx.fill();
+  ctx.strokeStyle = lineA; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  for (let i = 1; i < 4; i++) {
+    const gx = -58 + i * 33 - 8;
+    ctx.beginPath(); ctx.moveTo(gx, 6); ctx.quadraticCurveTo(gx + 3, 48, gx + 9 + i * 2, 82 - i * 6); ctx.stroke();
+  }
+  // thumb tucked along the near side of the head, tip pointing down; filled only (no
+  // outline — an outlined ellipse read as a detached blob)
+  ctx.fillStyle = palmB;
+  ctx.beginPath(); ctx.ellipse(66, 44, 15, 30, 0.16, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = lineA; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(56, 18); ctx.quadraticCurveTo(52, 34, 55, 52); ctx.stroke();
+  ctx.restore();
+}
+
+// --- Scene: tossing a ball, cat tracking and catching it ---
+function drawPlayCutaway(u, skin, eye, type) {
+  const r = 108;
+  const slap = 0.56;
+
+  // ball path: parabola in from the upper-left landing LEFT of the head (never crossing
+  // the face circle), slap at the paw, fly off up-right under the chin
+  let bx, by;
+  if (u < slap) {
+    const p = u / slap;
+    bx = -70 + 330 * p;
+    by = 100 + 375 * p - Math.sin(p * Math.PI) * 185;
+  } else {
+    // the bat: ball rockets back the way it came (up-left) — never crossing the face,
+    // so no frame freezes it on the nose
+    const p = (u - slap) / (1 - slap);
+    bx = 260 - 720 * p;
+    by = 465 - 280 * p + 160 * p * p;
+  }
+
+  // floor plane + the ball's shadow on it (radius shrinks as ball is high, drop line connects them)
+  ctx.fillStyle = isNight ? 'rgba(0,0,0,0.14)' : 'rgba(160,120,60,0.10)';
+  ctx.fillRect(0, 470, ROOM_W, ROOM_H - 470);
+  const height = cuClamp(470 - by, 0, 470);
+  const shR = Math.max(8, 44 - height * 0.055);
+  ctx.fillStyle = `rgba(60,40,15,${Math.max(0.1, 0.3 - height * 0.0004)})`;
+  ctx.beginPath(); ctx.ellipse(bx, 478, shR, shR * 0.26, 0, 0, Math.PI * 2); ctx.fill();
+  if (height > 90) {
+    ctx.strokeStyle = 'rgba(60,40,15,0.07)';
+    ctx.lineWidth = 2; ctx.setLineDash([3, 7]);
+    ctx.beginPath(); ctx.moveTo(bx, by + 26); ctx.lineTo(bx, 474); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // dashed arc preview of the toss path — stops short of the ball so it reads as a
+  // trajectory, not a wand string
+  if (u < slap) {
+    ctx.strokeStyle = 'rgba(120,100,80,0.16)';
+    ctx.lineWidth = 3; ctx.setLineDash([2, 12]); ctx.lineCap = 'round';
+    ctx.beginPath();
+    let first = true;
+    for (let p = 0; p <= Math.max(0, u / slap - 0.09); p += 0.03) {
+      const tx = -70 + 330 * p;
+      const ty = 100 + 375 * p - Math.sin(p * Math.PI) * 185;
+      if (first) { ctx.moveTo(tx, ty); first = false; } else ctx.lineTo(tx, ty);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // pounce energy: head LOW with neck extended (not slumped), spring at the slap
+  const look = cuClamp((bx - 430) / 330, -1, 0.35);
+  const crouch = cuClamp((u - 0.25) / 0.22, 0, 1) * (u < slap - 0.03 ? 1 : 0) * 34;
+  const lunge = cuBump(u, slap - 0.05, slap + 0.1) * 22;
+  const headY = 330 + crouch - lunge;
+  const headX = 400 + look * 46 - cuClamp((u - 0.25) / 0.25, 0, 1) * 26;   // lean toward the ball
+
+  // coiled body: wedge from low chest (left, facing the ball) to rising haunches (right)
+  const wig = (u > 0.26 && u < slap - 0.04) ? Math.sin((u - 0.26) * Math.PI * 16) * 9 : 0;
+  const coil = cuClamp((u - 0.25) / 0.25, 0, 1);
+  const hipY = 472 - 60 * coil;                     // haunches load up high
+  const chestY = 470 + 14 * coil;                   // chest sinks toward the floor
+  const bg = ctx.createRadialGradient(430, hipY, 20, 430, 520, 240);
+  bg.addColorStop(0, shadeColor(skin, 10));
+  bg.addColorStop(1, shadeColor(skin, -20));
+  ctx.fillStyle = bg;
+  ctx.beginPath();
+  ctx.moveTo(215, 505);
+  ctx.quadraticCurveTo(300, chestY - 22, 395, chestY - 20 + wig * 0.3);   // chest under the head
+  ctx.quadraticCurveTo(490, hipY + 36 + wig * 0.6, 548, hipY + wig * 0.7); // rise to the butt
+  ctx.quadraticCurveTo(608, hipY + 42, 612, 505);
+  ctx.closePath();
+  ctx.fill();
+  // butt-wiggle swing arcs (read as the pre-pounce shimmy)
+  if (u > 0.26 && u < slap - 0.04) {
+    const s2 = wig >= 0 ? 1 : -1;
+    ctx.strokeStyle = 'rgba(120,90,70,0.38)'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(560, hipY + 20, 58, -0.55 + s2 * 0.18, 0.12 + s2 * 0.18); ctx.stroke();
+    ctx.beginPath(); ctx.arc(560, hipY + 20, 72, -0.45 + s2 * 0.18, 0.02 + s2 * 0.18); ctx.stroke();
+  }
+  // tail low and twitching along the ground (stalking, not upright)
+  const twitch = Math.sin(u * Math.PI * 12) * 14 * cuClamp((u - 0.2) / 0.3, 0, 1);
+  ctx.strokeStyle = shadeColor(skin, -8);
+  ctx.lineWidth = 16; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(592, 498);
+  ctx.quadraticCurveTo(680, 492 + twitch, 706, 472 + twitch * 1.6);
+  ctx.stroke();
+
+  // head tracking: strong lateral shift toward ball + tilt
+  const blink = cuBump(u, 0.79, 0.86);
+  cuFace({
+    cx: headX, cy: headY, r, tilt: look * 0.16 - cuClamp((u - 0.25) / 0.25, 0, 1) * 0.10 - lunge * 0.004,
+    skin, eye, type,
+    pupils: cuLerp(1.25, 1.7, cuClamp(u / 0.5, 0, 1)),   // big dark lock-on pupils
+    slit: true,                                          // hunter's vertical pupils
+    narrow: 0.18,                                        // WIDE locked eyes, not half-lidded
+    irisScale: 1.15,
+    lookX: look * 1.6, lookY: by < 260 ? -0.5 : 0.35,
+    lids: [blink, blink],
+    mouth: u > slap + 0.14 ? 'grin' : 'flat',            // silent stalk, grin only after the slap
+    earsFwd: u < slap ? cuClamp((u - 0.16) / 0.16, 0, 1) : 0,   // ears PERKED at the target
+    brows: 'angry',
+    });
+
+  // manga focus marks over the head during the wind-up (instant 'intense' shorthand)
+  if (u > 0.3 && u < slap - 0.03) {
+    const fa = cuClamp((u - 0.3) / 0.1, 0, 1) * (1 - cuClamp((u - (slap - 0.13)) / 0.1, 0, 1));
+    ctx.strokeStyle = `rgba(90,60,40,${0.5 * fa})`; ctx.lineWidth = 5; ctx.lineCap = 'round';
+    const topY = headY - r - 12;
+    for (const [ox, len] of [[-34, 30], [0, 40], [34, 30]]) {
+      const jx = headX + ox + Math.sin(u * Math.PI * 10 + ox) * 2;
+      ctx.beginPath();
+      ctx.moveTo(jx, topY - len);
+      ctx.lineTo(jx + ox * 0.18, topY - 4);
+      ctx.stroke();
+    }
+  }
+
+  // motion whoosh lines that follow the arc tangent
+  if (u < slap && u > 0.08) {
+    ctx.strokeStyle = 'rgba(120,100,80,0.3)'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    const ang = Math.atan2(360 - Math.cos((u / slap) * Math.PI) * 190 * Math.PI, 400);
+    for (let i = 0; i < 3; i++) {
+      const off = (i - 1) * 15;
+      const sx2 = bx - 40 - Math.cos(ang) * (10 + i * 8);
+      const sy2 = by + off - Math.sin(ang) * (10 + i * 8);
+      ctx.beginPath();
+      ctx.moveTo(sx2, sy2);
+      ctx.lineTo(sx2 - Math.cos(ang) * 34, sy2 - Math.sin(ang) * 34);
+      ctx.stroke();
+    }
+  }
+
+  // cat paw swipe at the slap moment (paw meets the ball at its landing point)
+  if (u > slap - 0.06 && u < slap + 0.12) {
+    const pp = (u - slap + 0.06) / 0.18;
+    ctx.save();
+    ctx.translate(258 + pp * 30, 482 - pp * 34);
+    ctx.rotate(-0.5 + pp * 0.4);
+    ctx.fillStyle = shadeColor(skin, 6);
+    ctx.beginPath(); ctx.ellipse(0, 0, 34, 26, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(228,150,150,0.7)';
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(-14 + i * 14, -22, 7, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
+
+  // impact starburst where the slap connects
+  if (u > slap && u < slap + 0.22) {
+    const pp = (u - slap) / 0.22;
+    for (let i = 0; i < 6; i++) {
+      const a = i * Math.PI / 3 + 0.4;
+      const d = 30 + pp * 80;
+      const sx2 = 262 + Math.cos(a) * d, sy2 = 460 + Math.sin(a) * d * 0.6;
+      const sz = 13 * (1 - pp * 0.6);
+      ctx.fillStyle = `rgba(233,176,60,${0.95 * (1 - pp)})`;
+      ctx.beginPath();
+      ctx.moveTo(sx2, sy2 - sz);
+      ctx.lineTo(sx2 + sz * 0.32, sy2 - sz * 0.32); ctx.lineTo(sx2 + sz, sy2);
+      ctx.lineTo(sx2 + sz * 0.32, sy2 + sz * 0.32); ctx.lineTo(sx2, sy2 + sz);
+      ctx.lineTo(sx2 - sz * 0.32, sy2 + sz * 0.32); ctx.lineTo(sx2 - sz, sy2);
+      ctx.lineTo(sx2 - sz * 0.32, sy2 - sz * 0.32);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+
+  // the ball itself (drawn last so it passes in front of the face)
+  if (by > -80) {
+    ctx.save();
+    ctx.translate(bx, by);
+    const spin = u * 14;
+    ctx.rotate(spin);
+    ctx.fillStyle = '#e76f51';
+    ctx.beginPath(); ctx.arc(0, 0, 26, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 5;
+    ctx.beginPath(); ctx.arc(0, 0, 18, -0.6, 0.9); ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, 18, Math.PI - 0.6, Math.PI + 0.9); ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// --- Scene: talking to the cat — four feline responses ---
+function drawTalkCutaway(variant, u, skin, eye, type) {
+  if (variant === 'intense') {
+    const push = 1 + 0.15 * cuEaseIO(cuClamp(u / 0.7, 0, 1));
+    ctx.save();
+    ctx.translate(400, 300); ctx.scale(push, push); ctx.translate(-400, -300);
+    const slowBlink = cuBump(u, 0.82, 0.92);
+    cuFace({
+      cx: 400, cy: 300, r: 122, skin, eye, type,
+      pupils: 1 - 0.8 * cuEaseIO(cuClamp(u / 0.45, 0, 1)), slit: true,
+      narrow: 0.2 * cuEaseIO(cuClamp(u / 0.5, 0, 1)),
+      brows: 'angry',
+      lids: [slowBlink, slowBlink],
+    });
+    ctx.restore();
+    const rg = ctx.createRadialGradient(400, 290, 170, 400, 290, 470);
+    rg.addColorStop(0, 'rgba(0,0,0,0)');
+    rg.addColorStop(1, `rgba(10,8,5,${0.28 + 0.08 * Math.sin(u * Math.PI * 6)})`);
+    ctx.fillStyle = rg;
+    ctx.fillRect(0, 0, ROOM_W, ROOM_H);
+  } else if (variant === 'quizzical') {
+    const tilt = -0.34 * cuOutBack(cuClamp((u - 0.08) / 0.24, 0, 1)) + 0.14 * cuEaseIn(cuClamp((u - 0.82) / 0.18, 0, 1));
+    const blink = cuBump(u, 0.55, 0.63);
+    cuFace({ cx: 400, cy: 320, r: 118, tilt, skin, eye, type, pupils: 1.1, lids: [blink, blink], brows: 'quizzical', mouth: 'flat' });
+    if (u > 0.24) {
+      // question mark rides the tilted frame beside the raised (right) ear
+      const qp = cuOutBack(cuClamp((u - 0.24) / 0.2, 0, 1));
+      const fade = u > 0.9 ? 1 - (u - 0.9) / 0.1 : 1;
+      ctx.save();
+      ctx.translate(400, 320); ctx.rotate(tilt);
+      ctx.globalAlpha *= fade;
+      ctx.fillStyle = '#e76f51';
+      ctx.font = `900 ${Math.max(4, Math.round(84 * qp))}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 10; ctx.lineJoin = 'round';
+      ctx.strokeText('?', 168, -128);
+      ctx.fillText('?', 168, -128);
+      ctx.restore();
+      ctx.textAlign = 'left';
+    }
+  } else if (variant === 'sleepy') {
+    const lid = cuEaseIn(cuClamp(u / 0.4, 0, 1));
+    const nod = cuBump(u, 0.48, 0.56) + cuBump(u, 0.61, 0.68) * 0.7 + cuBump(u, 0.73, 0.79) * 0.5;
+    const snap = u > 0.9 ? cuEaseOut((u - 0.9) / 0.1) : 0;
+    cuFace({
+      cx: 400, cy: 312 + nod * 22 - snap * 10, r: 118, skin, eye, type,
+      lids: [Math.max(0, lid - snap), Math.max(0, lid - snap)],
+      pupils: snap ? 1.2 : 1,
+      tilt: lid * 0.07,
+    });
+    if (u > 0.42) {
+      for (let i = 0; i < 3; i++) {
+        const zu = ((u - 0.42) * 1.7 + i * 0.34) % 1;
+        ctx.fillStyle = `rgba(107,91,214,${(1 - zu) * 0.75})`;
+        ctx.font = `700 ${18 + i * 9}px system-ui`;
+        ctx.fillText('z', 522 + i * 28 + zu * 22, 230 - zu * 96);
+      }
+    }
+    if (snap > 0.5) {
+      ctx.fillStyle = `rgba(231,111,81,${(snap - 0.5) * 2})`;
+      ctx.font = '900 64px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('!', 214, 180);
+      ctx.textAlign = 'left';
+    }
+  } else { // 'away' — the ultimate cat insult
+    const turn = cuEaseIO(cuClamp((u - 0.1) / 0.3, 0, 1));
+    const walk = cuEaseIn(cuClamp((u - 0.6) / 0.4, 0, 1));
+    const cx = 400 + walk * 430;
+    const bob = walk > 0 ? Math.abs(Math.sin(walk * Math.PI * 3.5)) * 16 * (1 - walk) : 0;
+
+    if (turn < 0.97) {
+      ctx.save();
+      ctx.translate(cx, 300 - bob);
+      ctx.scale(Math.max(0.02, 1 - turn), 1);
+      ctx.translate(-cx, -(300 - bob));
+      cuFace({ cx, cy: 300 - bob, r: 118, skin, eye, type });
+      ctx.restore();
+    }
+    if (turn > 0.2) {
+      const ba = cuClamp((turn - 0.2) / 0.4, 0, 1);
+      ctx.save();
+      ctx.globalAlpha *= ba;
+      const hg = ctx.createRadialGradient(cx - 20, 280 - bob, 20, cx, 300 - bob, 160);
+      hg.addColorStop(0, shadeColor(skin, 10));
+      hg.addColorStop(1, shadeColor(skin, -16));
+      ctx.fillStyle = hg;
+      ctx.beginPath(); ctx.arc(cx, 300 - bob, 118, 0, Math.PI * 2); ctx.fill();
+      // back-of-head ears + stripes
+      ctx.fillStyle = shadeColor(skin, -10);
+      for (const sgn of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(cx + sgn * 38, 300 - bob - 78);
+        ctx.lineTo(cx + sgn * 76, 300 - bob - 158);
+        ctx.lineTo(cx + sgn * 92, 300 - bob - 22);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.strokeStyle = shadeColor(skin, -26); ctx.lineWidth = 6; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(cx, 300 - bob - 108); ctx.lineTo(cx, 300 - bob - 60); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx - 26, 300 - bob - 100); ctx.lineTo(cx - 30, 300 - bob - 55); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx + 26, 300 - bob - 100); ctx.lineTo(cx + 30, 300 - bob - 55); ctx.stroke();
+      // flicking tail entering from the left
+      const tw = Math.sin(cuClamp((u - 0.45) / 0.3, 0, 1) * Math.PI * 4) * 26;
+      ctx.strokeStyle = shadeColor(skin, -6); ctx.lineWidth = 16; ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(cx - 120, 420);
+      ctx.quadraticCurveTo(cx - 190, 380, cx - 196 + tw, 300);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (u > 0.3) {
+      const da = Math.max(0, 1 - cuClamp((u - 0.75) / 0.2, 0, 1));
+      ctx.fillStyle = `rgba(110,100,92,${0.85 * da})`;
+      ctx.font = '900 58px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('…', 230, 180);
+      ctx.textAlign = 'left';
+    }
+  }
+}
+
+function drawCutawayScene(u) {
+  const g = ctx.createRadialGradient(400, 220, 60, 400, 260, 540);
+  if (isNight) { g.addColorStop(0, '#4a4238'); g.addColorStop(1, '#221d17'); }
+  else { g.addColorStop(0, '#fdf3df'); g.addColorStop(1, '#ead9b8'); }
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, ROOM_W, ROOM_H);
+
+  const fur = (currentCat && currentCat.fur_color) || '#d4a373';
+  const eye = (currentCat && currentCat.eye_color) || '#2d6a4f';
+  const type = ((currentCat && currentCat.type) || 'Tabby').replace(/^./, c => c.toUpperCase());
+  const skin = type === 'Sphynx' ? mixColor(fur, '#c98d7f', 0.55) : fur;
+
+  if (cutaway.kind === 'pet') drawPetCutaway(u, skin, eye, type);
+  else if (cutaway.kind === 'play') drawPlayCutaway(u, skin, eye, type);
+  else drawTalkCutaway(cutaway.variant || 'quizzical', u, skin, eye, type);
+}
+
+
+function pickTalkVariant() {
+  let roll = Math.random();
+  const sleepyChance = isNight ? 0.42 : 0.18;
+  if (roll < sleepyChance) return 'sleepy';
+  roll -= sleepyChance;
+  if (roll < 0.25) return 'walkaway';
+  if (roll < 0.55) return 'intense';
+  return 'quizzical';
+}
+
 function drawGame() {
+  let ph = null;
+  if (cutaway) {
+    ph = cutawayPhase();
+    if (!ph) { cutaway = null; }
+  }
   ctx.clearRect(0, 0, ROOM_W, ROOM_H);
   drawRoom();
 
@@ -3170,6 +3867,23 @@ function drawGame() {
   updateParticles();
   drawCat();
   drawParticles();
+
+  // Cutaway cinematics: zoom into the cat, then the staged close-up scene
+  if (ph && cutaway) {
+    if (ph.stage === 'zoom') {
+      const dpr = canvas.width / ROOM_W;
+      const fpx = cutaway.fx * dpr, fpy = cutaway.fy * dpr;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(canvas, fpx * (1 - ph.s), fpy * (1 - ph.s), canvas.width * ph.s, canvas.height * ph.s);
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, ph.a);
+      drawCutawayScene(ph.u);
+      ctx.restore();
+    }
+  }
 }
 
 function drawPlayBall() {
@@ -3274,6 +3988,7 @@ async function doPet() {
     catEntity.vx = 0;
     catEntity.vy = 0;
     playPurrSound();
+    startCutaway('pet');
   } catch (e) {
     logChat(e.message, true);
   }
@@ -3296,7 +4011,9 @@ chatOptions.querySelectorAll('button[data-action]').forEach(btn => {
 
       if (action === 'talk') {
         catEntity.bubble = { text: data.message, timer: 120 };
+        startCutaway('talk', pickTalkVariant());
       } else if (action === 'play') {
+        startCutaway('play');
         catEntity.state = 'play';
         catEntity.timer = 0;
         catEntity.bubble = { text: 'Meow!', timer: 90 };
@@ -3923,6 +4640,7 @@ drawCatdergarten();
 
 // Canvas mouse handlers for cat movement and furniture dragging
 canvas.addEventListener('pointerdown', (e) => {
+  if (cutaway) return;   // cinematics own the screen
   const pos = getCanvasMousePos(e);
   const mx = pos.x;
   const my = pos.y;
